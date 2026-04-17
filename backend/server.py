@@ -251,92 +251,143 @@ def user_has_role(user: dict, *roles) -> bool:
 async def register(req: RegisterRequest, response: Response):
     email = req.email.lower().strip()
     existing = await db.users.find_one({"email": email}, {"_id": 0})
+    
     if existing and existing.get("password_hash"):
         raise HTTPException(status_code=400, detail="Email already registered")
     
     if existing:
-        await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(req.password), "name": req.name}})
+        await db.users.update_one(
+            {"email": email},
+            {"$set": {
+                "password_hash": hash_password(req.password),
+                "name": req.name
+            }}
+        )
         user = await db.users.find_one({"email": email}, {"_id": 0})
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         scount = await db.users.count_documents({"role": "student"}) + 1
         display_id = f"CL-STD-{scount:03d}"
+
         user = {
-            "user_id": user_id, "display_id": display_id,
-            "email": email, "name": req.name,
-            "password_hash": hash_password(req.password), "picture": None,
-            "role": "student", "phone": "", "address": "", "dob": "",
-            "guardian_name": "", "guardian_phone": "", "blood_group": "",
-            "qualification": "", "skills": [], "interests": [], "bio": "",
+            "user_id": user_id,
+            "display_id": display_id,
+            "email": email,
+            "name": req.name,
+            "password_hash": hash_password(req.password),
+            "picture": None,
+            "role": "student",
+            "phone": "",
+            "address": "",
+            "dob": "",
+            "guardian_name": "",
+            "guardian_phone": "",
+            "blood_group": "",
+            "qualification": "",
+            "skills": [],
+            "interests": [],
+            "bio": "",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
+
         await db.users.insert_one(user)
-    
+
     user.pop("password_hash", None)
     user.pop("_id", None)
+
     access = create_access_token(user["user_id"], email)
     refresh = create_refresh_token(user["user_id"])
-    set_auth_cookies(response, access, refresh)
-    return user
 
-@api_router.post("/auth/login")
+    set_auth_cookies(response, access, refresh)
+
+    return user
+    @api_router.post("/auth/login")
 async def login(req: LoginRequest, response: Response):
     email = req.email.lower().strip()
+
     user = await db.users.find_one({"email": email}, {"_id": 0})
+
     if not user or not user.get("password_hash"):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
     if not verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     user.pop("password_hash", None)
+
     access = create_access_token(user["user_id"], email)
     refresh = create_refresh_token(user["user_id"])
-    set_auth_cookies(response, access, refresh)
-    return user
 
-# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    set_auth_cookies(response, access, refresh)
+
+    return user
+    # REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 @api_router.post("/auth/google-callback")
 async def google_callback(req: GoogleCallbackRequest, response: Response):
     try:
         resp = http_requests.get(
             "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": req.session_id}, timeout=10
+            headers={"X-Session-ID": req.session_id},
+            timeout=10
         )
         resp.raise_for_status()
         data = resp.json()
-        
+
         email = data["email"].lower()
+
         user = await db.users.find_one({"email": email}, {"_id": 0})
+
         if not user:
             user_id = f"user_{uuid.uuid4().hex[:12]}"
             scount = await db.users.count_documents({"role": "student"}) + 1
             display_id = f"CL-STD-{scount:03d}"
+
             user = {
-                "user_id": user_id, "display_id": display_id,
-                "email": email, "name": data["name"],
-                "picture": data.get("picture"), "role": "student",
-                "phone": "", "address": "", "dob": "",
-                "guardian_name": "", "guardian_phone": "", "blood_group": "",
-                "qualification": "", "skills": [], "interests": [], "bio": "",
+                "user_id": user_id,
+                "display_id": display_id,
+                "email": email,
+                "name": data["name"],
+                "picture": data.get("picture"),
+                "role": "student",
+                "phone": "",
+                "address": "",
+                "dob": "",
+                "guardian_name": "",
+                "guardian_phone": "",
+                "blood_group": "",
+                "qualification": "",
+                "skills": [],
+                "interests": [],
+                "bio": "",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
+
             await db.users.insert_one(user)
         else:
-            await db.users.update_one({"email": email}, {"$set": {"picture": data.get("picture"), "name": data["name"]}})
+            await db.users.update_one(
+                {"email": email},
+                {"$set": {
+                    "picture": data.get("picture"),
+                    "name": data["name"]
+                }}
+            )
             user = await db.users.find_one({"email": email}, {"_id": 0})
-        
+
         user.pop("password_hash", None)
         user.pop("_id", None)
+
         access = create_access_token(user["user_id"], email)
         refresh = create_refresh_token(user["user_id"])
+
         set_auth_cookies(response, access, refresh)
+
         return user
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Google auth failed: {str(e)}")
-
-@api_router.post("/auth/microsoft-callback")
+        @api_router.post("/auth/microsoft-callback")
 async def microsoft_callback():
     raise HTTPException(status_code=501, detail="Microsoft auth coming soon. Configure Azure AD credentials to enable.")
 
