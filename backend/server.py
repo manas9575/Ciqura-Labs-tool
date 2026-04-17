@@ -16,6 +16,7 @@ from typing import List, Optional
 import requests as http_requests
 from io import BytesIO, StringIO
 import csv
+import re
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
@@ -33,6 +34,42 @@ api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ─── ID Generators ───
+async def generate_display_id(prefix: str, collection_name: str) -> str:
+    count = await db[collection_name].count_documents({}) + 1
+    return f"CL-{prefix}-{count:03d}"
+
+def make_course_code(name: str, duration: str) -> str:
+    skip = {'and', 'the', 'of', 'in', 'for', 'a', 'an', 'or', 'certified', 'program', 'course', 'professional', '&'}
+    words = [w for w in name.split() if w.lower() not in skip and len(w) > 1]
+    if len(words) >= 2:
+        return (words[0][0] + words[1][0:2]).upper()[:3]
+    elif len(words) == 1:
+        return words[0][:3].upper()
+    return name[:3].upper()
+
+async def gen_course_id(name: str, duration: str) -> str:
+    code = make_course_code(name, duration)
+    dur = ''.join(filter(str.isdigit, duration)) or '00'
+    count = await db.courses.count_documents({}) + 1
+    return f"CL-{code}-{dur}"
+
+async def gen_batch_id(course_name: str) -> str:
+    code = make_course_code(course_name, "")
+    count = await db.batches.count_documents({}) + 1
+    return f"CL-{code}-B{count:02d}"
+
+async def gen_student_id() -> str:
+    count = await db.users.count_documents({"role": "student"}) + 1
+    return f"CL-STD-{count:03d}"
+
+async def gen_faculty_id() -> str:
+    count = await db.users.count_documents({"role": "faculty"}) + 1
+    return f"CL-FAC-{count:03d}"
+
+def gen_receipt_id() -> str:
+    return f"CL-RCP-{uuid.uuid4().hex[:6].upper()}"
 
 # ─── Request Models ───
 class RegisterRequest(BaseModel):
@@ -84,16 +121,24 @@ class AssignmentCreate(BaseModel):
     title: str
     description: str
     due_date: str
+    assigned_students: Optional[List[str]] = None
 
 class SubmissionGrade(BaseModel):
     grade: str
     feedback: str
+
+class CommentCreate(BaseModel):
+    entity_type: str  # "batch" or "assignment"
+    entity_id: str
+    text: str
 
 class FeeCreate(BaseModel):
     student_id: str
     course_id: str
     amount: float
     due_date: str
+    category: str = "Tuition"
+    installments: int = 1
 
 class PaymentCreate(BaseModel):
     fee_id: str
@@ -119,6 +164,40 @@ class EmailSend(BaseModel):
     to: str
     subject: str
     message: str
+
+class HolidayCreate(BaseModel):
+    date: str
+    name: str
+    description: Optional[str] = ""
+
+class CourseResourceCreate(BaseModel):
+    course_id: str
+    title: str
+    url: str
+    type: str = "link"
+
+class UserProfileUpdate(BaseModel):
+    picture: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    name: Optional[str] = None
+    skills: Optional[List[str]] = None
+    interests: Optional[List[str]] = None
+    bio: Optional[str] = None
+    availability: Optional[str] = None
+    address: Optional[str] = None
+    dob: Optional[str] = None
+    guardian_name: Optional[str] = None
+    guardian_phone: Optional[str] = None
+    blood_group: Optional[str] = None
+    qualification: Optional[str] = None
+
+class LeaveCreate(BaseModel):
+    date: str
+    reason: Optional[str] = ""
+
+class LeaveStatusUpdate(BaseModel):
+    status: str  # approved, rejected
 
 # ─── Auth Helper ───
 async def get_current_user(request: Request):
@@ -164,10 +243,16 @@ async def register(req: RegisterRequest, response: Response):
         user = await db.users.find_one({"email": email}, {"_id": 0})
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
+        scount = await db.users.count_documents({"role": "student"}) + 1
+        display_id = f"CL-STD-{scount:03d}"
         user = {
-            "user_id": user_id, "email": email, "name": req.name,
+            "user_id": user_id, "display_id": display_id,
+            "email": email, "name": req.name,
             "password_hash": hash_password(req.password), "picture": None,
-            "role": "student", "created_at": datetime.now(timezone.utc).isoformat()
+            "role": "student", "phone": "", "address": "", "dob": "",
+            "guardian_name": "", "guardian_phone": "", "blood_group": "",
+            "qualification": "", "skills": [], "interests": [], "bio": "",
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.users.insert_one(user)
     
@@ -208,9 +293,15 @@ async def google_callback(req: GoogleCallbackRequest, response: Response):
         user = await db.users.find_one({"email": email}, {"_id": 0})
         if not user:
             user_id = f"user_{uuid.uuid4().hex[:12]}"
+            scount = await db.users.count_documents({"role": "student"}) + 1
+            display_id = f"CL-STD-{scount:03d}"
             user = {
-                "user_id": user_id, "email": email, "name": data["name"],
+                "user_id": user_id, "display_id": display_id,
+                "email": email, "name": data["name"],
                 "picture": data.get("picture"), "role": "student",
+                "phone": "", "address": "", "dob": "",
+                "guardian_name": "", "guardian_phone": "", "blood_group": "",
+                "qualification": "", "skills": [], "interests": [], "bio": "",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.users.insert_one(user)
@@ -300,8 +391,13 @@ async def create_course(req: CourseCreate, request: Request):
     if user["role"] not in ["super_admin", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     course_id = f"course_{uuid.uuid4().hex[:12]}"
+    code = make_course_code(req.name, req.duration)
+    dur_match = re.search(r'(\d+)', req.duration or '')
+    dur = dur_match.group(1).zfill(2) if dur_match else '00'
+    display_id = f"CL-{code}-{dur}"
     course = {
-        "course_id": course_id, "name": req.name, "description": req.description,
+        "course_id": course_id, "display_id": display_id,
+        "name": req.name, "description": req.description,
         "duration": req.duration, "fee_structure": req.fee_structure,
         "cover_image": req.cover_image or "", "created_by": user["user_id"],
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -312,8 +408,19 @@ async def create_course(req: CourseCreate, request: Request):
 
 @api_router.get("/courses")
 async def list_courses(request: Request):
-    await get_current_user(request)
-    courses = await db.courses.find({}, {"_id": 0}).to_list(1000)
+    user = await get_current_user(request)
+    if user["role"] == "student":
+        enrollments = await db.enrollments.find({"student_id": user["user_id"]}, {"_id": 0, "course_id": 1}).to_list(1000)
+        course_ids = [e["course_id"] for e in enrollments]
+        courses = await db.courses.find({"course_id": {"$in": course_ids}}, {"_id": 0}).to_list(1000)
+        for c in courses:
+            c.pop("fee_structure", None)
+    elif user["role"] == "faculty":
+        my_batches = await db.batches.find({"faculty_id": user["user_id"]}, {"_id": 0, "course_id": 1}).to_list(100)
+        course_ids = list(set(b["course_id"] for b in my_batches))
+        courses = await db.courses.find({"course_id": {"$in": course_ids}}, {"_id": 0}).to_list(1000)
+    else:
+        courses = await db.courses.find({}, {"_id": 0}).to_list(1000)
     return courses
 
 @api_router.get("/courses/{course_id}")
@@ -349,8 +456,13 @@ async def create_batch(req: BatchCreate, request: Request):
     if user["role"] not in ["super_admin", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     batch_id = f"batch_{uuid.uuid4().hex[:12]}"
+    course = await db.courses.find_one({"course_id": req.course_id}, {"_id": 0, "name": 1})
+    code = make_course_code(course["name"], "") if course else "GEN"
+    bcount = await db.batches.count_documents({"course_id": req.course_id}) + 1
+    display_id = f"CL-{code}-B{bcount:02d}"
     batch = {
-        "batch_id": batch_id, "course_id": req.course_id, "name": req.name,
+        "batch_id": batch_id, "display_id": display_id,
+        "course_id": req.course_id, "name": req.name,
         "start_date": req.start_date, "end_date": req.end_date,
         "faculty_id": req.faculty_id, "schedule": req.schedule,
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -367,6 +479,9 @@ async def list_batches(request: Request, course_id: Optional[str] = None):
         query["course_id"] = course_id
     if user["role"] == "faculty":
         query["faculty_id"] = user["user_id"]
+    elif user["role"] == "student":
+        enrollments = await db.enrollments.find({"student_id": user["user_id"]}, {"_id": 0, "batch_id": 1}).to_list(100)
+        query["batch_id"] = {"$in": [e["batch_id"] for e in enrollments]}
     batches = await db.batches.find(query, {"_id": 0}).to_list(1000)
     for b in batches:
         course = await db.courses.find_one({"course_id": b["course_id"]}, {"_id": 0, "name": 1})
@@ -493,6 +608,7 @@ async def create_assignment(req: AssignmentCreate, request: Request):
         "assignment_id": assignment_id, "batch_id": req.batch_id,
         "title": req.title, "description": req.description,
         "due_date": req.due_date, "created_by": user["user_id"],
+        "assigned_students": req.assigned_students or [],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.assignments.insert_one(assignment)
@@ -515,7 +631,10 @@ async def list_assignments(request: Request, batch_id: Optional[str] = None):
         if not batch_id:
             query["batch_id"] = {"$in": batch_ids}
     assignments = await db.assignments.find(query, {"_id": 0}).to_list(1000)
+    filtered = []
     for a in assignments:
+        if user["role"] == "student" and a.get("assigned_students") and user["user_id"] not in a["assigned_students"]:
+            continue
         batch = await db.batches.find_one({"batch_id": a["batch_id"]}, {"_id": 0, "name": 1, "course_id": 1})
         a["batch_name"] = batch["name"] if batch else "Unknown"
         if batch:
@@ -528,7 +647,8 @@ async def list_assignments(request: Request, batch_id: Optional[str] = None):
         if user["role"] == "student":
             sub = await db.submissions.find_one({"assignment_id": a["assignment_id"], "student_id": user["user_id"]}, {"_id": 0})
             a["my_submission"] = sub
-    return assignments
+        filtered.append(a)
+    return filtered
 
 @api_router.delete("/assignments/{assignment_id}")
 async def delete_assignment(assignment_id: str, request: Request):
@@ -593,15 +713,35 @@ async def create_fee(req: FeeCreate, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["super_admin", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    fee_id = f"fee_{uuid.uuid4().hex[:12]}"
-    fee = {
-        "fee_id": fee_id, "student_id": req.student_id, "course_id": req.course_id,
-        "amount": req.amount, "due_date": req.due_date, "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.fees.insert_one(fee)
-    fee.pop("_id", None)
-    return fee
+    
+    if req.installments > 1:
+        installment_amount = round(req.amount / req.installments, 2)
+        fees_created = []
+        for i in range(req.installments):
+            fee_id = f"fee_{uuid.uuid4().hex[:12]}"
+            due = datetime.fromisoformat(req.due_date) + timedelta(days=30 * i)
+            fee = {
+                "fee_id": fee_id, "student_id": req.student_id, "course_id": req.course_id,
+                "amount": installment_amount, "due_date": due.strftime("%Y-%m-%d"),
+                "status": "pending", "category": req.category,
+                "installment": i + 1, "total_installments": req.installments,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.fees.insert_one(fee)
+            fee.pop("_id", None)
+            fees_created.append(fee)
+        return fees_created
+    else:
+        fee_id = f"fee_{uuid.uuid4().hex[:12]}"
+        fee = {
+            "fee_id": fee_id, "student_id": req.student_id, "course_id": req.course_id,
+            "amount": req.amount, "due_date": req.due_date, "status": "pending",
+            "category": req.category, "installment": 1, "total_installments": 1,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.fees.insert_one(fee)
+        fee.pop("_id", None)
+        return fee
 
 @api_router.get("/fees")
 async def list_fees(request: Request, student_id: Optional[str] = None):
@@ -632,7 +772,7 @@ async def create_payment(req: PaymentCreate, request: Request):
     if not fee:
         raise HTTPException(status_code=404, detail="Fee not found")
     payment_id = f"pay_{uuid.uuid4().hex[:12]}"
-    receipt_number = f"RCP{uuid.uuid4().hex[:8].upper()}"
+    receipt_number = gen_receipt_id()
     payment = {
         "payment_id": payment_id, "fee_id": req.fee_id,
         "student_id": fee["student_id"], "amount": req.amount,
@@ -675,7 +815,7 @@ async def generate_receipt(payment_id: str, request: Request):
     student = await db.users.find_one({"user_id": payment["student_id"]}, {"_id": 0})
     fee = await db.fees.find_one({"fee_id": payment["fee_id"]}, {"_id": 0})
     course = await db.courses.find_one({"course_id": fee["course_id"]}, {"_id": 0})
-    settings = await db.institute_settings.find_one({}, {"_id": 0}) or {"institute_name": "Nexus Institute"}
+    settings = await db.institute_settings.find_one({}, {"_id": 0}) or {"institute_name": "Ciqura Labs"}
     
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -699,6 +839,8 @@ async def generate_receipt(payment_id: str, request: Request):
     c.setFont("Helvetica", 10)
     c.drawString(1*inch, y, f"Name: {student['name']}")
     y -= 0.2*inch
+    c.drawString(1*inch, y, f"Student ID: {student.get('display_id', '')}")
+    y -= 0.2*inch
     c.drawString(1*inch, y, f"Email: {student['email']}")
     
     y -= 0.4*inch
@@ -706,7 +848,7 @@ async def generate_receipt(payment_id: str, request: Request):
     c.drawString(1*inch, y, "Course Information")
     y -= 0.25*inch
     c.setFont("Helvetica", 10)
-    c.drawString(1*inch, y, f"Course: {course['name']}")
+    c.drawString(1*inch, y, f"Course: {course['name']}  ({course.get('display_id', '')})")
     c.drawString(4*inch, y, f"Duration: {course['duration']}")
     
     y -= 0.4*inch
@@ -714,16 +856,16 @@ async def generate_receipt(payment_id: str, request: Request):
     c.drawString(1*inch, y, "Payment Details")
     y -= 0.25*inch
     c.setFont("Helvetica", 10)
-    c.drawString(1*inch, y, f"Amount Paid: ${payment['amount']:.2f}")
+    c.drawString(1*inch, y, f"Amount Paid: Rs.{payment['amount']:.2f}")
     c.drawString(4*inch, y, f"Mode: {payment['payment_mode']}")
     y -= 0.2*inch
-    c.drawString(1*inch, y, f"Total Course Fee: ${fee['amount']:.2f}")
+    c.drawString(1*inch, y, f"Total Course Fee: Rs.{fee['amount']:.2f}")
     
     all_pmts = await db.payments.find({"fee_id": fee["fee_id"]}, {"_id": 0}).to_list(1000)
     total_paid = sum(pm["amount"] for pm in all_pmts)
     y -= 0.2*inch
-    c.drawString(1*inch, y, f"Total Paid: ${total_paid:.2f}")
-    c.drawString(4*inch, y, f"Balance: ${fee['amount'] - total_paid:.2f}")
+    c.drawString(1*inch, y, f"Total Paid: Rs.{total_paid:.2f}")
+    c.drawString(4*inch, y, f"Balance: Rs.{fee['amount'] - total_paid:.2f}")
     
     y -= 0.4*inch
     c.line(1*inch, y, width - 1*inch, y)
@@ -841,7 +983,7 @@ async def get_settings(request: Request):
     if not settings:
         sid = f"setting_{uuid.uuid4().hex[:12]}"
         settings = {
-            "setting_id": sid, "institute_name": "Nexus Institute",
+            "setting_id": sid, "institute_name": "Ciqura Labs",
             "logo_url": "", "primary_color": "#002FA7", "theme": "light",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
@@ -855,12 +997,28 @@ async def update_settings(req: SettingsUpdate, request: Request):
     user = await get_current_user(request)
     if user["role"] != "super_admin":
         raise HTTPException(status_code=403, detail="Only super_admin can update settings")
-    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    updates = {}
+    for k, v in req.model_dump().items():
+        if v is not None and v != "":
+            updates[k] = v
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     settings = await db.institute_settings.find_one({}, {"_id": 0})
     if settings:
         await db.institute_settings.update_one({"setting_id": settings["setting_id"]}, {"$set": updates})
-    return {"message": "Settings updated"}
+    else:
+        sid = f"setting_{uuid.uuid4().hex[:12]}"
+        new_settings = {
+            "setting_id": sid,
+            "institute_name": req.institute_name or "Ciqura Labs",
+            "logo_url": req.logo_url or "",
+            "primary_color": req.primary_color or "#002FA7",
+            "theme": req.theme or "light",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.institute_settings.insert_one(new_settings)
+    updated = await db.institute_settings.find_one({}, {"_id": 0})
+    return updated
 
 # ─── Dashboard Stats ───
 @api_router.get("/dashboard/stats")
@@ -978,6 +1136,325 @@ async def export_fees(request: Request):
     output.seek(0)
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=fees.csv"})
 
+# ─── Course Detail & Resources ───
+@api_router.get("/courses/{course_id}/detail")
+async def get_course_detail(course_id: str, request: Request):
+    user = await get_current_user(request)
+    course = await db.courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    if user["role"] == "student":
+        enrollment = await db.enrollments.find_one({"student_id": user["user_id"], "course_id": course_id}, {"_id": 0})
+        if not enrollment:
+            raise HTTPException(status_code=403, detail="Not enrolled in this course")
+    elif user["role"] == "faculty":
+        batches = await db.batches.find({"course_id": course_id, "faculty_id": user["user_id"]}, {"_id": 0}).to_list(100)
+        if not batches:
+            raise HTTPException(status_code=403, detail="Not assigned to this course")
+    
+    batches = await db.batches.find({"course_id": course_id}, {"_id": 0}).to_list(100)
+    for b in batches:
+        faculty = await db.users.find_one({"user_id": b["faculty_id"]}, {"_id": 0, "name": 1})
+        b["faculty_name"] = faculty["name"] if faculty else "Unknown"
+        b["student_count"] = await db.enrollments.count_documents({"batch_id": b["batch_id"]})
+    
+    enrollments = await db.enrollments.find({"course_id": course_id}, {"_id": 0}).to_list(1000)
+    students = []
+    for e in enrollments:
+        s = await db.users.find_one({"user_id": e["student_id"]}, {"_id": 0, "password_hash": 0})
+        if s:
+            batch = await db.batches.find_one({"batch_id": e["batch_id"]}, {"_id": 0, "name": 1})
+            s["batch_name"] = batch["name"] if batch else "Unknown"
+            s["batch_id"] = e["batch_id"]
+            s["enrollment_date"] = e["enrollment_date"]
+            students.append(s)
+    
+    materials = await db.files.find({"course_id": course_id, "is_deleted": False}, {"_id": 0}).to_list(1000)
+    for m in materials:
+        uploader = await db.users.find_one({"user_id": m["uploaded_by"]}, {"_id": 0, "name": 1})
+        m["uploader_name"] = uploader["name"] if uploader else "Unknown"
+    
+    resources = await db.course_resources.find({"course_id": course_id}, {"_id": 0}).to_list(1000)
+    assignments = await db.assignments.find({"batch_id": {"$in": [b["batch_id"] for b in batches]}}, {"_id": 0}).to_list(1000)
+    
+    result = {
+        **course, "batches": batches, "students": students,
+        "materials": materials, "resources": resources, "assignments": assignments,
+        "total_students": len(students), "total_batches": len(batches)
+    }
+    if user["role"] == "student":
+        result.pop("fee_structure", None)
+    return result
+
+@api_router.post("/courses/{course_id}/resources")
+async def add_course_resource(course_id: str, req: CourseResourceCreate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["super_admin", "admin", "faculty"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    rid = f"res_{uuid.uuid4().hex[:12]}"
+    resource = {"resource_id": rid, "course_id": course_id, "title": req.title, "url": req.url, "type": req.type, "added_by": user["user_id"], "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.course_resources.insert_one(resource)
+    resource.pop("_id", None)
+    return resource
+
+@api_router.delete("/courses/{course_id}/resources/{resource_id}")
+async def delete_course_resource(course_id: str, resource_id: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["super_admin", "admin", "faculty"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.course_resources.delete_one({"resource_id": resource_id})
+    return {"message": "Resource deleted"}
+
+# ─── Batch Detail ───
+@api_router.get("/batches/{batch_id}/detail")
+async def get_batch_detail(batch_id: str, request: Request):
+    user = await get_current_user(request)
+    batch = await db.batches.find_one({"batch_id": batch_id}, {"_id": 0})
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    if user["role"] == "faculty" and batch["faculty_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not assigned to this batch")
+    
+    course = await db.courses.find_one({"course_id": batch["course_id"]}, {"_id": 0})
+    batch["course_name"] = course["name"] if course else "Unknown"
+    faculty = await db.users.find_one({"user_id": batch["faculty_id"]}, {"_id": 0, "password_hash": 0})
+    batch["faculty"] = faculty
+    
+    enrollments = await db.enrollments.find({"batch_id": batch_id}, {"_id": 0}).to_list(1000)
+    students = []
+    for e in enrollments:
+        s = await db.users.find_one({"user_id": e["student_id"]}, {"_id": 0, "password_hash": 0})
+        if s:
+            att_total = await db.attendance.count_documents({"batch_id": batch_id, "student_id": s["user_id"]})
+            att_present = await db.attendance.count_documents({"batch_id": batch_id, "student_id": s["user_id"], "status": "present"})
+            s["attendance_pct"] = round((att_present / att_total * 100) if att_total > 0 else 0, 1)
+            subs = await db.submissions.count_documents({"student_id": s["user_id"]})
+            s["submissions_count"] = subs
+            students.append(s)
+    
+    assignments = await db.assignments.find({"batch_id": batch_id}, {"_id": 0}).to_list(1000)
+    for a in assignments:
+        a["submission_count"] = await db.submissions.count_documents({"assignment_id": a["assignment_id"]})
+    
+    attendance_dates = await db.attendance.distinct("date", {"batch_id": batch_id})
+    
+    return {**batch, "students": students, "assignments": assignments, "attendance_dates": sorted(attendance_dates), "total_students": len(students)}
+
+# ─── Student Profile ───
+@api_router.get("/users/{user_id}/profile")
+async def get_user_profile(user_id: str, request: Request):
+    current = await get_current_user(request)
+    if current["role"] == "student" and current["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    enrollments = await db.enrollments.find({"student_id": user_id}, {"_id": 0}).to_list(100)
+    courses = []
+    for e in enrollments:
+        c = await db.courses.find_one({"course_id": e["course_id"]}, {"_id": 0})
+        b = await db.batches.find_one({"batch_id": e["batch_id"]}, {"_id": 0, "name": 1})
+        if c:
+            c["batch_name"] = b["name"] if b else "Unknown"
+            c["enrollment_date"] = e["enrollment_date"]
+            courses.append(c)
+    
+    fees = await db.fees.find({"student_id": user_id}, {"_id": 0}).to_list(100)
+    for f in fees:
+        c = await db.courses.find_one({"course_id": f["course_id"]}, {"_id": 0, "name": 1})
+        f["course_name"] = c["name"] if c else "Unknown"
+        pmts = await db.payments.find({"fee_id": f["fee_id"]}, {"_id": 0}).to_list(100)
+        f["total_paid"] = sum(p["amount"] for p in pmts)
+        f["balance"] = f["amount"] - f["total_paid"]
+    
+    att_total = await db.attendance.count_documents({"student_id": user_id})
+    att_present = await db.attendance.count_documents({"student_id": user_id, "status": "present"})
+    
+    if user["role"] == "faculty":
+        batches = await db.batches.find({"faculty_id": user_id}, {"_id": 0}).to_list(100)
+        for b in batches:
+            c = await db.courses.find_one({"course_id": b["course_id"]}, {"_id": 0, "name": 1})
+            b["course_name"] = c["name"] if c else "Unknown"
+            b["student_count"] = await db.enrollments.count_documents({"batch_id": b["batch_id"]})
+        user["batches"] = batches
+    
+    return {
+        **user, "courses": courses, "fees": fees,
+        "attendance_total": att_total, "attendance_present": att_present,
+        "attendance_pct": round((att_present / att_total * 100) if att_total > 0 else 0, 1)
+    }
+
+@api_router.put("/users/{user_id}/profile")
+async def update_user_profile(user_id: str, req: UserProfileUpdate, request: Request):
+    current = await get_current_user(request)
+    is_admin = current["role"] in ["super_admin", "admin"]
+    is_own = current["user_id"] == user_id
+    if not is_own and not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    updates = {}
+    for k, v in req.model_dump().items():
+        if v is not None:
+            updates[k] = v
+    if updates:
+        await db.users.update_one({"user_id": user_id}, {"$set": updates})
+    return {"message": "Profile updated"}
+
+# ─── Holidays ───
+@api_router.post("/holidays")
+async def create_holiday(req: HolidayCreate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    hid = f"holiday_{uuid.uuid4().hex[:12]}"
+    holiday = {"holiday_id": hid, "date": req.date, "name": req.name, "description": req.description, "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.holidays.insert_one(holiday)
+    holiday.pop("_id", None)
+    return holiday
+
+@api_router.get("/holidays")
+async def list_holidays(request: Request):
+    await get_current_user(request)
+    holidays = await db.holidays.find({}, {"_id": 0}).sort("date", 1).to_list(1000)
+    return holidays
+
+@api_router.delete("/holidays/{holiday_id}")
+async def delete_holiday(holiday_id: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.holidays.delete_one({"holiday_id": holiday_id})
+    return {"message": "Holiday deleted"}
+
+# ─── Leave Management ───
+@api_router.post("/leaves")
+async def apply_leave(req: LeaveCreate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["faculty", "admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Only faculty/admin can apply for leave")
+    lid = f"leave_{uuid.uuid4().hex[:12]}"
+    leave = {
+        "leave_id": lid, "user_id": user["user_id"], "user_name": user["name"],
+        "date": req.date, "reason": req.reason, "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.leaves.insert_one(leave)
+    leave.pop("_id", None)
+    return leave
+
+@api_router.get("/leaves")
+async def list_leaves(request: Request, user_id: Optional[str] = None, status: Optional[str] = None):
+    user = await get_current_user(request)
+    query = {}
+    if user_id:
+        query["user_id"] = user_id
+    elif user["role"] == "faculty":
+        query["user_id"] = user["user_id"]
+    if status:
+        query["status"] = status
+    leaves = await db.leaves.find(query, {"_id": 0}).sort("date", 1).to_list(1000)
+    return leaves
+
+@api_router.put("/leaves/{leave_id}/status")
+async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.leaves.update_one({"leave_id": leave_id}, {"$set": {"status": req.status}})
+    if req.status == "approved":
+        leave = await db.leaves.find_one({"leave_id": leave_id}, {"_id": 0})
+        if leave:
+            approved_leaves = await db.leaves.find({"user_id": leave["user_id"], "status": "approved", "date": {"$gte": datetime.now(timezone.utc).strftime("%Y-%m-%d")}}, {"_id": 0}).to_list(100)
+            leave_dates = [l["date"] for l in approved_leaves]
+            avail_text = f"On leave: {', '.join(leave_dates[:5])}" if leave_dates else "Available"
+            await db.users.update_one({"user_id": leave["user_id"]}, {"$set": {"availability": avail_text}})
+    return {"message": f"Leave {req.status}"}
+
+@api_router.delete("/leaves/{leave_id}")
+async def delete_leave(leave_id: str, request: Request):
+    user = await get_current_user(request)
+    leave = await db.leaves.find_one({"leave_id": leave_id}, {"_id": 0})
+    if not leave:
+        raise HTTPException(status_code=404, detail="Leave not found")
+    if leave["user_id"] != user["user_id"] and user["role"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.leaves.delete_one({"leave_id": leave_id})
+    return {"message": "Leave deleted"}
+
+@api_router.get("/faculty/availability")
+async def get_faculty_availability(request: Request):
+    await get_current_user(request)
+    faculty = await db.users.find({"role": "faculty"}, {"_id": 0, "password_hash": 0}).to_list(100)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for f in faculty:
+        approved_leaves = await db.leaves.find({"user_id": f["user_id"], "status": "approved"}, {"_id": 0}).to_list(100)
+        f["leaves"] = approved_leaves
+        today_leave = await db.leaves.find_one({"user_id": f["user_id"], "status": "approved", "date": today}, {"_id": 0})
+        f["available_today"] = today_leave is None
+    return faculty
+
+# ─── Comments ───
+@api_router.post("/comments")
+async def create_comment(req: CommentCreate, request: Request):
+    user = await get_current_user(request)
+    cid = f"comment_{uuid.uuid4().hex[:12]}"
+    comment = {
+        "comment_id": cid, "entity_type": req.entity_type, "entity_id": req.entity_id,
+        "text": req.text, "user_id": user["user_id"], "user_name": user["name"],
+        "user_role": user["role"], "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.comments.insert_one(comment)
+    comment.pop("_id", None)
+    return comment
+
+@api_router.get("/comments")
+async def list_comments(request: Request, entity_type: str = Query(...), entity_id: str = Query(...)):
+    await get_current_user(request)
+    comments = await db.comments.find({"entity_type": entity_type, "entity_id": entity_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return comments
+
+@api_router.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: str, request: Request):
+    user = await get_current_user(request)
+    comment = await db.comments.find_one({"comment_id": comment_id}, {"_id": 0})
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment["user_id"] != user["user_id"] and user["role"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.comments.delete_one({"comment_id": comment_id})
+    return {"message": "Comment deleted"}
+
+# ─── Enhanced Dashboard ───
+@api_router.get("/dashboard/enhanced")
+async def get_enhanced_dashboard(request: Request):
+    user = await get_current_user(request)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    today_attendance = await db.attendance.count_documents({"date": today})
+    today_present = await db.attendance.count_documents({"date": today, "status": "present"})
+    
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    new_enrollments = await db.enrollments.find({"enrollment_date": {"$gte": seven_days_ago}}, {"_id": 0}).to_list(100)
+    for e in new_enrollments:
+        s = await db.users.find_one({"user_id": e["student_id"]}, {"_id": 0, "name": 1})
+        c = await db.courses.find_one({"course_id": e["course_id"]}, {"_id": 0, "name": 1})
+        e["student_name"] = s["name"] if s else "Unknown"
+        e["course_name"] = c["name"] if c else "Unknown"
+    
+    upcoming_holidays = await db.holidays.find({"date": {"$gte": today}}, {"_id": 0}).sort("date", 1).to_list(5)
+    active_batches = await db.batches.count_documents({})
+    active_courses = await db.courses.count_documents({})
+    
+    return {
+        "today_attendance": today_attendance, "today_present": today_present,
+        "new_enrollments": new_enrollments[:5],
+        "upcoming_holidays": upcoming_holidays,
+        "active_batches": active_batches, "active_courses": active_courses
+    }
+
 # ─── Email ───
 @api_router.post("/email/send")
 async def send_email_endpoint(req: EmailSend, request: Request):
@@ -999,20 +1476,34 @@ app.add_middleware(
 )
 
 async def seed_admin():
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@nexusinstitute.com").lower()
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@ciquralabs.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
     existing = await db.users.find_one({"email": admin_email}, {"_id": 0})
     if not existing:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({
-            "user_id": user_id, "email": admin_email, "name": "Super Admin",
+            "user_id": user_id, "display_id": "CL-ADM-001",
+            "email": admin_email, "name": "Super Admin",
             "password_hash": hash_password(admin_password), "picture": None,
-            "role": "super_admin", "created_at": datetime.now(timezone.utc).isoformat()
+            "role": "super_admin", "skills": [], "interests": [], "bio": "",
+            "phone": "", "availability": "", "address": "", "dob": "",
+            "guardian_name": "", "guardian_phone": "", "blood_group": "", "qualification": "",
+            "created_at": datetime.now(timezone.utc).isoformat()
         })
         logger.info(f"Admin seeded: {admin_email}")
     elif not verify_password(admin_password, existing.get("password_hash", "")):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
         logger.info("Admin password updated")
+    
+    settings = await db.institute_settings.find_one({}, {"_id": 0})
+    if not settings:
+        sid = f"setting_{uuid.uuid4().hex[:12]}"
+        await db.institute_settings.insert_one({
+            "setting_id": sid, "institute_name": "Ciqura Labs",
+            "logo_url": "", "primary_color": "#002FA7", "theme": "light",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        })
     
     await db.users.create_index("email", unique=True)
 

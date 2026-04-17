@@ -12,7 +12,7 @@ export default function Fees() {
   const [courses, setCourses] = useState([]);
   const [feeOpen, setFeeOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
-  const [feeForm, setFeeForm] = useState({ student_id: '', course_id: '', amount: '', due_date: '' });
+  const [feeForm, setFeeForm] = useState({ student_id: '', course_id: '', amount: '', due_date: '', category: 'Tuition', installments: 1 });
   const [payForm, setPayForm] = useState({ fee_id: '', amount: '', payment_mode: 'cash' });
   const isAdmin = ['super_admin', 'admin'].includes(user?.role);
 
@@ -27,7 +27,7 @@ export default function Fees() {
   useEffect(() => { load(); }, []);
 
   const handleCreateFee = async () => {
-    await api.post('/fees', { ...feeForm, amount: parseFloat(feeForm.amount) || 0 });
+    await api.post('/fees', { ...feeForm, amount: parseFloat(feeForm.amount) || 0, installments: parseInt(feeForm.installments) || 1 });
     setFeeOpen(false);
     setFeeForm({ student_id: '', course_id: '', amount: '', due_date: '' });
     load();
@@ -77,12 +77,14 @@ export default function Fees() {
       {/* Fees Table */}
       <div className="border mb-6" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
         <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <h3 className="text-lg font-medium tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>Fee Records</h3>
+          <h3 className="text-lg font-medium tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>
+            {isAdmin ? 'Fee Records' : 'My Fee Records'}
+          </h3>
         </div>
         <table className="w-full text-sm" style={{ fontFamily: 'IBM Plex Sans' }}>
           <thead>
             <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-              {[isAdmin && 'Student', 'Course', 'Amount', 'Paid', 'Balance', 'Due Date', 'Status', 'Actions'].filter(Boolean).map(h => (
+              {[isAdmin && 'Student', 'Course', 'Category', 'Amount', 'Paid', 'Balance', 'Due Date', 'Status', isAdmin && 'Actions'].filter(Boolean).map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs uppercase tracking-widest font-medium" style={{ color: 'var(--text-secondary)' }}>{h}</th>
               ))}
             </tr>
@@ -92,9 +94,10 @@ export default function Fees() {
               <tr key={f.fee_id} className="border-b last:border-0 transition-colors duration-150 hover:bg-[var(--surface)]" style={{ borderColor: 'var(--border)' }}>
                 {isAdmin && <td className="px-4 py-3" style={{ color: 'var(--text-primary)' }}>{f.student_name}</td>}
                 <td className="px-4 py-3" style={{ color: 'var(--brand)' }}>{f.course_name}</td>
-                <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>${f.amount}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--success)' }}>${f.total_paid}</td>
-                <td className="px-4 py-3" style={{ color: f.balance > 0 ? 'var(--alert)' : 'var(--success)' }}>${f.balance}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{f.category || 'Tuition'}</td>
+                <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>&#8377;{f.amount}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--success)' }}>&#8377;{f.total_paid}</td>
+                <td className="px-4 py-3" style={{ color: f.balance > 0 ? 'var(--alert)' : 'var(--success)' }}>&#8377;{f.balance}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{f.due_date?.slice(0, 10)}</td>
                 <td className="px-4 py-3">
                   <span className="px-2 py-0.5 text-xs font-medium uppercase border" style={{ borderColor: statusColors[f.status], color: statusColors[f.status] }}>
@@ -136,7 +139,7 @@ export default function Fees() {
               <tr key={p.payment_id} className="border-b last:border-0 transition-colors duration-150 hover:bg-[var(--surface)]" style={{ borderColor: 'var(--border)' }}>
                 <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>{p.receipt_number}</td>
                 {isAdmin && <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{p.student_name}</td>}
-                <td className="px-4 py-3 font-medium" style={{ color: 'var(--success)' }}>${p.amount}</td>
+                <td className="px-4 py-3 font-medium" style={{ color: 'var(--success)' }}>&#8377;{p.amount}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{p.payment_mode}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{p.payment_date?.slice(0, 10)}</td>
                 <td className="px-4 py-3">
@@ -175,9 +178,32 @@ export default function Fees() {
               </select>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Amount ($)</label>
+              <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Amount (&#8377;)</label>
               <input type="number" value={feeForm.amount} onChange={e => setFeeForm({ ...feeForm, amount: e.target.value })} data-testid="fee-amount-input"
                 className="w-full px-3 py-2 border text-sm bg-transparent outline-none" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans' }} />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Category</label>
+              <select value={feeForm.category} onChange={e => setFeeForm({ ...feeForm, category: e.target.value })} data-testid="fee-category-select"
+                className="w-full px-3 py-2 border text-sm bg-transparent outline-none" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans' }}>
+                <option value="Tuition">Tuition</option>
+                <option value="Registration">Registration</option>
+                <option value="Exam">Exam</option>
+                <option value="Lab">Lab</option>
+                <option value="Library">Library</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Installments</label>
+              <select value={feeForm.installments} onChange={e => setFeeForm({ ...feeForm, installments: e.target.value })} data-testid="fee-installments-select"
+                className="w-full px-3 py-2 border text-sm bg-transparent outline-none" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans' }}>
+                <option value="1">1 (Full Payment)</option>
+                <option value="2">2 Installments</option>
+                <option value="3">3 Installments</option>
+                <option value="4">4 Installments</option>
+                <option value="6">6 Installments</option>
+              </select>
             </div>
             <div>
               <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Due Date</label>
@@ -196,7 +222,7 @@ export default function Fees() {
           <DialogHeader><DialogTitle style={{ fontFamily: 'Outfit' }}>Record Payment</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-4">
             <div>
-              <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Amount ($)</label>
+              <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Amount (&#8377;)</label>
               <input type="number" value={payForm.amount} onChange={e => setPayForm({ ...payForm, amount: e.target.value })} data-testid="payment-amount-input"
                 className="w-full px-3 py-2 border text-sm bg-transparent outline-none" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans' }} />
             </div>

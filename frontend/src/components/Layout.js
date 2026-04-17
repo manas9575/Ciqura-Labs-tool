@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   House, BookOpen, Users, CalendarCheck, ClipboardText,
   CurrencyDollar, Gear, ChartBar, Bell, SignOut, List, X,
-  GraduationCap, UserCircle, FolderOpen, Sun, Moon
+  GraduationCap, UserCircle, FolderOpen, Sun, Moon, CalendarBlank, Airplane
 } from '@phosphor-icons/react';
 
 const navItems = {
@@ -18,6 +18,8 @@ const navItems = {
     { to: '/assignments', icon: ClipboardText, label: 'Assignments' },
     { to: '/fees', icon: CurrencyDollar, label: 'Fees' },
     { to: '/files', icon: FolderOpen, label: 'Files' },
+    { to: '/leaves', icon: Airplane, label: 'Leaves' },
+    { to: '/holidays', icon: CalendarBlank, label: 'Holidays' },
     { to: '/analytics', icon: ChartBar, label: 'Analytics' },
     { to: '/settings', icon: Gear, label: 'Settings' },
   ],
@@ -31,6 +33,8 @@ const navItems = {
     { to: '/assignments', icon: ClipboardText, label: 'Assignments' },
     { to: '/fees', icon: CurrencyDollar, label: 'Fees' },
     { to: '/files', icon: FolderOpen, label: 'Files' },
+    { to: '/leaves', icon: Airplane, label: 'Leaves' },
+    { to: '/holidays', icon: CalendarBlank, label: 'Holidays' },
     { to: '/analytics', icon: ChartBar, label: 'Analytics' },
   ],
   faculty: [
@@ -39,6 +43,8 @@ const navItems = {
     { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
     { to: '/assignments', icon: ClipboardText, label: 'Assignments' },
     { to: '/files', icon: FolderOpen, label: 'Materials' },
+    { to: '/leaves', icon: Airplane, label: 'My Leaves' },
+    { to: '/holidays', icon: CalendarBlank, label: 'Holidays' },
   ],
   student: [
     { to: '/dashboard', icon: House, label: 'Dashboard' },
@@ -47,6 +53,8 @@ const navItems = {
     { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
     { to: '/fees', icon: CurrencyDollar, label: 'Fees' },
     { to: '/files', icon: FolderOpen, label: 'Materials' },
+    { to: '/leaves', icon: UserCircle, label: 'Faculty Schedule' },
+    { to: '/holidays', icon: CalendarBlank, label: 'Holidays' },
   ],
 };
 
@@ -88,8 +96,8 @@ export default function Layout() {
         style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
       >
         <div className="flex items-center gap-3 p-4 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="w-8 h-8 flex items-center justify-center font-bold text-white text-sm" style={{ background: 'var(--brand)' }}>N</div>
-          <span className="font-heading text-lg font-bold tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>NEXUS</span>
+          <div className="w-8 h-8 flex items-center justify-center font-bold text-white text-sm" style={{ background: 'var(--brand)' }}>CL</div>
+          <span className="font-heading text-lg font-bold tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>CIQURA LABS</span>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2">

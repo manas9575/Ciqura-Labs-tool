@@ -50,8 +50,8 @@ export default function Login() {
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12" style={{ background: 'var(--text-primary)' }}>
         <div>
           <div className="flex items-center gap-3 mb-16">
-            <div className="w-10 h-10 flex items-center justify-center text-lg font-bold" style={{ background: 'var(--brand)', color: '#FFFFFF' }}>N</div>
-            <span className="text-2xl font-bold tracking-tight" style={{ color: 'var(--bg)', fontFamily: 'Outfit' }}>NEXUS</span>
+            <div className="w-10 h-10 flex items-center justify-center text-lg font-bold" style={{ background: 'var(--brand)', color: '#FFFFFF' }}>CL</div>
+            <span className="text-2xl font-bold tracking-tight" style={{ color: 'var(--bg)', fontFamily: 'Outfit' }}>CIQURA LABS</span>
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-none mb-6" style={{ color: 'var(--bg)', fontFamily: 'Outfit' }}>
             Institute<br />Coaching<br />Management
@@ -61,7 +61,7 @@ export default function Login() {
           </p>
         </div>
         <p className="text-xs uppercase tracking-widest" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>
-          Nexus Institute Platform v1.0
+          Ciqura Labs Platform v1.0
         </p>
       </div>
 
@@ -69,8 +69,8 @@ export default function Login() {
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-sm">
           <div className="lg:hidden flex items-center gap-3 mb-10">
-            <div className="w-8 h-8 flex items-center justify-center text-sm font-bold text-white" style={{ background: 'var(--brand)' }}>N</div>
-            <span className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>NEXUS</span>
+            <div className="w-8 h-8 flex items-center justify-center text-sm font-bold text-white" style={{ background: 'var(--brand)' }}>CL</div>
+            <span className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>CIQURA LABS</span>
           </div>
 
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>

@@ -18,10 +18,12 @@ function StatCard({ icon: Icon, label, value, color }) {
 export default function Dashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState({});
+  const [enhanced, setEnhanced] = useState({});
   const [recentEnrollments, setRecentEnrollments] = useState([]);
 
   useEffect(() => {
     api.get('/dashboard/stats').then(r => setStats(r.data)).catch(() => {});
+    api.get('/dashboard/enhanced').then(r => setEnhanced(r.data)).catch(() => {});
     if (['super_admin', 'admin'].includes(user?.role)) {
       api.get('/enrollments').then(r => setRecentEnrollments(r.data.slice(-5).reverse())).catch(() => {});
     }
@@ -48,7 +50,7 @@ export default function Dashboard() {
             <StatCard icon={Users} label="Students" value={stats.total_students || 0} color="var(--brand)" />
             <StatCard icon={GraduationCap} label="Faculty" value={stats.total_faculty || 0} color="var(--success)" />
             <StatCard icon={BookOpen} label="Courses" value={stats.total_courses || 0} color="var(--warning)" />
-            <StatCard icon={CurrencyDollar} label="Revenue" value={`$${(stats.total_revenue || 0).toLocaleString()}`} color="var(--success)" />
+            <StatCard icon={CurrencyDollar} label="Revenue" value={`\u20B9${(stats.total_revenue || 0).toLocaleString()}`} color="var(--success)" />
             <StatCard icon={GraduationCap} label="Batches" value={stats.total_batches || 0} color="var(--brand)" />
             <StatCard icon={Users} label="Enrollments" value={stats.total_enrollments || 0} color="var(--text-secondary)" />
             <StatCard icon={CurrencyDollar} label="Pending Fees" value={stats.pending_fees || 0} color="var(--alert)" />
@@ -94,6 +96,40 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Enhanced Dashboard - Daily Summary */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+        {/* Today's Attendance */}
+        <div className="border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+          <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+            <h3 className="text-lg font-medium tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>Today's Attendance</h3>
+          </div>
+          <div className="p-6 text-center">
+            <p className="text-4xl font-bold" style={{ color: 'var(--brand)', fontFamily: 'Outfit' }}>
+              {enhanced.today_present || 0} / {enhanced.today_attendance || 0}
+            </p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>students marked present today</p>
+          </div>
+        </div>
+
+        {/* Upcoming Holidays */}
+        <div className="border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+          <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+            <h3 className="text-lg font-medium tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>Upcoming Holidays</h3>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+            {(enhanced.upcoming_holidays || []).map(h => (
+              <div key={h.holiday_id} className="px-6 py-3 flex items-center justify-between text-sm" style={{ fontFamily: 'IBM Plex Sans' }}>
+                <span style={{ color: 'var(--text-primary)' }}>{h.name}</span>
+                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{h.date}</span>
+              </div>
+            ))}
+            {(!enhanced.upcoming_holidays || enhanced.upcoming_holidays.length === 0) && (
+              <div className="px-6 py-6 text-center text-sm" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>No upcoming holidays</div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Plus, Trash } from '@phosphor-icons/react';
 
 export default function Batches() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [batches, setBatches] = useState([]);
   const [courses, setCourses] = useState([]);
   const [faculty, setFaculty] = useState([]);
@@ -59,8 +61,11 @@ export default function Batches() {
           </thead>
           <tbody>
             {batches.map(b => (
-              <tr key={b.batch_id} className="border-b last:border-0 transition-colors duration-150 hover:bg-[var(--surface)]" style={{ borderColor: 'var(--border)' }}>
-                <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>{b.name}</td>
+              <tr key={b.batch_id} className="border-b last:border-0 transition-colors duration-150 hover:bg-[var(--surface)] cursor-pointer" style={{ borderColor: 'var(--border)' }}
+                onClick={() => navigate(`/batches/${b.batch_id}`)}>
+                <td className="px-4 py-3 font-medium" style={{ color: 'var(--brand)' }}>
+                  {b.name} {b.display_id && <span className="text-xs font-mono ml-1 px-1 py-0.5 border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>{b.display_id}</span>}
+                </td>
                 <td className="px-4 py-3" style={{ color: 'var(--brand)' }}>{b.course_name}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{b.faculty_name}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{b.schedule}</td>

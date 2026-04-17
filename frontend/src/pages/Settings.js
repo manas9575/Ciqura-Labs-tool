@@ -1,26 +1,64 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
+import { CheckCircle } from '@phosphor-icons/react';
 
 export default function Settings() {
   const { user } = useAuth();
   const [settings, setSettings] = useState({ institute_name: '', logo_url: '', primary_color: '#002FA7', theme: 'light' });
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const isSuperAdmin = user?.role === 'super_admin';
 
   useEffect(() => {
-    api.get('/settings').then(r => setSettings(r.data)).catch(() => {});
+    api.get('/settings').then(r => {
+      const d = r.data;
+      setSettings({
+        institute_name: d.institute_name || '',
+        logo_url: d.logo_url || '',
+        primary_color: d.primary_color || '#002FA7',
+        theme: d.theme || 'light'
+      });
+    }).catch(() => {});
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
-    await api.put('/settings', settings);
-    setSaving(false);
+    setSaved(false);
+    try {
+      const res = await api.put('/settings', {
+        institute_name: settings.institute_name || null,
+        logo_url: settings.logo_url || null,
+        primary_color: settings.primary_color || null,
+        theme: settings.theme || null
+      });
+      if (res.data?.institute_name) {
+        setSettings({
+          institute_name: res.data.institute_name || '',
+          logo_url: res.data.logo_url || '',
+          primary_color: res.data.primary_color || '#002FA7',
+          theme: res.data.theme || 'light'
+        });
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div data-testid="settings-page">
       <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-6" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>Institute Settings</h1>
+
+      {saved && (
+        <div className="flex items-center gap-2 mb-4 p-3 border" data-testid="settings-saved-msg"
+          style={{ borderColor: 'var(--success)', color: 'var(--success)', background: 'var(--bg)', fontFamily: 'IBM Plex Sans' }}>
+          <CheckCircle size={16} weight="bold" /> Settings saved successfully
+        </div>
+      )}
 
       <div className="border max-w-2xl" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
         <div className="p-6 space-y-6">
@@ -38,7 +76,8 @@ export default function Settings() {
               className="w-full px-3 py-2.5 border text-sm bg-transparent outline-none disabled:opacity-50"
               style={{ borderColor: 'var(--border)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans' }} />
             {settings.logo_url && (
-              <img src={settings.logo_url} alt="Logo preview" className="mt-2 h-16 object-contain" />
+              <img src={settings.logo_url} alt="Logo preview" className="mt-2 h-16 object-contain"
+                onError={e => { e.target.style.display = 'none'; }} />
             )}
           </div>
           <div>

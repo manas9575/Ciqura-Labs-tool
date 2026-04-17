@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Plus, Pencil, Trash } from '@phosphor-icons/react';
 
 export default function Courses() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -65,14 +67,18 @@ export default function Courses() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {courses.map(c => (
-          <div key={c.course_id} data-testid={`course-card-${c.course_id}`} className="border overflow-hidden" style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}>
+          <div key={c.course_id} data-testid={`course-card-${c.course_id}`} className="border overflow-hidden cursor-pointer transition-colors duration-150 hover:border-[var(--brand)]" style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            onClick={() => navigate(`/courses/${c.course_id}`)}>
             <div className="h-40 bg-cover bg-center" style={{ backgroundImage: `url(${c.cover_image || coverImages[c.name] || 'https://images.unsplash.com/photo-1674027444636-ce7379d51252?w=400'})` }} />
             <div className="p-4">
-              <h3 className="text-lg font-medium tracking-tight mb-1" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>{c.name}</h3>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-lg font-medium tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>{c.name}</h3>
+                {c.display_id && <span className="text-xs font-mono px-1.5 py-0.5 border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>{c.display_id}</span>}
+              </div>
               <p className="text-sm mb-3 line-clamp-2" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>{c.description}</p>
               <div className="flex items-center justify-between text-sm" style={{ fontFamily: 'IBM Plex Sans' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>{c.duration}</span>
-                <span className="font-medium" style={{ color: 'var(--brand)' }}>${c.fee_structure}</span>
+                {isAdmin && c.fee_structure != null && <span className="font-medium" style={{ color: 'var(--brand)' }}>&#8377;{c.fee_structure}</span>}
               </div>
               {isAdmin && (
                 <div className="flex gap-2 mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>

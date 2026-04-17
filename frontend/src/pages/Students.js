@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Trash, UserPlus, DownloadSimple } from '@phosphor-icons/react';
 
 export default function Students({ isFaculty = false }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [courses, setCourses] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -71,7 +73,7 @@ export default function Students({ isFaculty = false }) {
         <table className="w-full text-sm" style={{ fontFamily: 'IBM Plex Sans' }}>
           <thead>
             <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-              {['Name', 'Email', 'Role', 'Joined', isAdmin && 'Actions'].filter(Boolean).map(h => (
+              {['Name', 'ID', 'Email', 'Role', 'Joined', isAdmin && 'Actions'].filter(Boolean).map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs uppercase tracking-widest font-medium" style={{ color: 'var(--text-secondary)' }}>{h}</th>
               ))}
             </tr>
@@ -80,13 +82,14 @@ export default function Students({ isFaculty = false }) {
             {users.map(u => (
               <tr key={u.user_id} className="border-b last:border-0 transition-colors duration-150 hover:bg-[var(--surface)]" style={{ borderColor: 'var(--border)' }}>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate(`/${isFaculty ? 'faculty' : 'students'}/${u.user_id}`)}>
                     {u.picture ? <img src={u.picture} alt="" className="w-6 h-6 rounded-full" /> : (
                       <div className="w-6 h-6 flex items-center justify-center text-white text-xs font-bold" style={{ background: 'var(--brand)' }}>{u.name?.[0]}</div>
                     )}
-                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{u.name}</span>
+                    <span className="font-medium underline" style={{ color: 'var(--brand)' }}>{u.name}</span>
                   </div>
                 </td>
+                <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{u.display_id || '-'}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{u.email}</td>
                 <td className="px-4 py-3">
                   {isAdmin ? (

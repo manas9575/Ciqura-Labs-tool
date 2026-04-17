@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import api, { BACKEND_URL } from '../lib/api';
+import api from '../lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Plus, UploadSimple, Trash } from '@phosphor-icons/react';
+import { Plus, UploadSimple, Trash, ChatCircle } from '@phosphor-icons/react';
+import Comments from '../components/Comments';
 
 export default function Assignments() {
   const { user } = useAuth();
@@ -10,9 +11,11 @@ export default function Assignments() {
   const [batches, setBatches] = useState([]);
   const [open, setOpen] = useState(false);
   const [gradeOpen, setGradeOpen] = useState(false);
+  const [commentOpen, setCommentOpen] = useState(null);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [submissions, setSubmissions] = useState([]);
-  const [form, setForm] = useState({ batch_id: '', title: '', description: '', due_date: '' });
+  const [form, setForm] = useState({ batch_id: '', title: '', description: '', due_date: '', assigned_students: [] });
+  const [batchStudents, setBatchStudents] = useState([]);
   const [gradeForm, setGradeForm] = useState({ submission_id: '', grade: '', feedback: '' });
   const [submitFile, setSubmitFile] = useState(null);
   const canCreate = ['faculty', 'admin', 'super_admin'].includes(user?.role);
@@ -23,10 +26,44 @@ export default function Assignments() {
   };
   useEffect(() => { load(); }, []);
 
+  const onBatchChange = async (batchId) => {
+    setForm({ ...form, batch_id: batchId, assigned_students: [] });
+    if (batchId) {
+      const r = await api.get(`/enrollments?batch_id=${batchId}`);
+      setBatchStudents(r.data);
+    } else {
+      setBatchStudents([]);
+    }
+  };
+
+  const toggleStudent = (studentId) => {
+    setForm(prev => {
+      const current = prev.assigned_students || [];
+      return {
+        ...prev,
+        assigned_students: current.includes(studentId)
+          ? current.filter(id => id !== studentId)
+          : [...current, studentId]
+      };
+    });
+  };
+
+  const selectAll = () => {
+    setForm(prev => ({
+      ...prev,
+      assigned_students: batchStudents.map(s => s.student_id)
+    }));
+  };
+
   const handleCreate = async () => {
-    await api.post('/assignments', form);
+    const payload = { ...form };
+    if (payload.assigned_students.length === 0) {
+      payload.assigned_students = null;
+    }
+    await api.post('/assignments', payload);
     setOpen(false);
-    setForm({ batch_id: '', title: '', description: '', due_date: '' });
+    setForm({ batch_id: '', title: '', description: '', due_date: '', assigned_students: [] });
+    setBatchStudents([]);
     load();
   };
 
@@ -59,13 +96,17 @@ export default function Assignments() {
   };
 
   const isStudent = user?.role === 'student';
+  const assignedLabel = (a) => {
+    if (!a.assigned_students || a.assigned_students.length === 0) return 'All students';
+    return `${a.assigned_students.length} student(s)`;
+  };
 
   return (
     <div data-testid="assignments-page">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>Assignments</h1>
         {canCreate && (
-          <button onClick={() => setOpen(true)} data-testid="add-assignment-btn"
+          <button onClick={() => { setOpen(true); setBatchStudents([]); setForm({ batch_id: '', title: '', description: '', due_date: '', assigned_students: [] }); }} data-testid="add-assignment-btn"
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white transition-colors duration-150"
             style={{ background: 'var(--brand)', fontFamily: 'IBM Plex Sans' }}>
             <Plus size={16} /> New Assignment
@@ -77,16 +118,22 @@ export default function Assignments() {
         {assignments.map(a => (
           <div key={a.assignment_id} data-testid={`assignment-${a.assignment_id}`} className="border p-4" style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}>
             <div className="flex items-start justify-between">
-              <div>
+              <div className="flex-1">
                 <h3 className="text-lg font-medium tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit' }}>{a.title}</h3>
                 <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>{a.description}</p>
-                <div className="flex gap-4 mt-2 text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>
+                <div className="flex flex-wrap gap-4 mt-2 text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>
                   <span>{a.batch_name} / {a.course_name}</span>
                   <span>Due: {a.due_date?.slice(0, 10)}</span>
                   {!isStudent && <span>{a.submission_count} submissions</span>}
+                  {!isStudent && <span>Assigned to: {assignedLabel(a)}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-4">
+                <button onClick={() => setCommentOpen(commentOpen === a.assignment_id ? null : a.assignment_id)} data-testid={`toggle-comments-${a.assignment_id}`}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs border transition-colors duration-150 hover:bg-[var(--surface)]"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>
+                  <ChatCircle size={12} /> Comments
+                </button>
                 {canCreate && (
                   <>
                     <button onClick={() => viewSubmissions(a.assignment_id)} data-testid={`view-submissions-${a.assignment_id}`}
@@ -102,16 +149,19 @@ export default function Assignments() {
               </div>
             </div>
 
+            {/* Comments section inline */}
+            {commentOpen === a.assignment_id && (
+              <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+                <Comments entityType="assignment" entityId={a.assignment_id} />
+              </div>
+            )}
+
             {isStudent && (
               <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
                 {a.my_submission ? (
                   <div className="flex items-center justify-between text-sm" style={{ fontFamily: 'IBM Plex Sans' }}>
                     <span style={{ color: 'var(--success)' }}>Submitted {a.my_submission.submitted_at?.slice(0, 10)}</span>
-                    {a.my_submission.grade && (
-                      <span className="px-2 py-1 border text-xs font-medium" style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>
-                        Grade: {a.my_submission.grade}
-                      </span>
-                    )}
+                    {a.my_submission.grade && <span className="px-2 py-1 border text-xs font-medium" style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>Grade: {a.my_submission.grade}</span>}
                     {a.my_submission.feedback && <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Feedback: {a.my_submission.feedback}</p>}
                   </div>
                 ) : (
@@ -119,8 +169,7 @@ export default function Assignments() {
                     <input type="file" onChange={e => setSubmitFile(e.target.files[0])} data-testid={`submit-file-${a.assignment_id}`}
                       className="text-sm" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }} />
                     <button onClick={() => handleSubmit(a.assignment_id)} data-testid={`submit-assignment-${a.assignment_id}`}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150"
-                      style={{ background: 'var(--brand)', fontFamily: 'IBM Plex Sans' }}>
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white" style={{ background: 'var(--brand)', fontFamily: 'IBM Plex Sans' }}>
                       <UploadSimple size={12} /> Submit
                     </button>
                   </div>
@@ -138,17 +187,41 @@ export default function Assignments() {
 
       {/* Create Assignment Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent style={{ background: 'var(--bg)' }}>
+        <DialogContent className="max-w-lg" style={{ background: 'var(--bg)' }}>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Outfit' }}>New Assignment</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-4">
             <div>
               <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Batch</label>
-              <select value={form.batch_id} onChange={e => setForm({ ...form, batch_id: e.target.value })} data-testid="assignment-batch-select"
+              <select value={form.batch_id} onChange={e => onBatchChange(e.target.value)} data-testid="assignment-batch-select"
                 className="w-full px-3 py-2 border text-sm bg-transparent outline-none" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans' }}>
                 <option value="">Select batch</option>
-                {batches.map(b => <option key={b.batch_id} value={b.batch_id}>{b.name}</option>)}
+                {batches.map(b => <option key={b.batch_id} value={b.batch_id}>{b.name} - {b.course_name}</option>)}
               </select>
             </div>
+
+            {form.batch_id && batchStudents.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs uppercase tracking-widest font-medium" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Assign to Students</label>
+                  <button onClick={selectAll} data-testid="select-all-students" className="text-xs underline" style={{ color: 'var(--brand)', fontFamily: 'IBM Plex Sans' }}>Select All</button>
+                </div>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Leave empty to assign to all students in batch</p>
+                <div className="max-h-40 overflow-y-auto border p-2 space-y-1" style={{ borderColor: 'var(--border)' }}>
+                  {batchStudents.map(s => (
+                    <label key={s.student_id} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer transition-colors duration-150 hover:bg-[var(--surface)]" style={{ fontFamily: 'IBM Plex Sans' }}>
+                      <input type="checkbox" checked={(form.assigned_students || []).includes(s.student_id)} onChange={() => toggleStudent(s.student_id)}
+                        data-testid={`student-checkbox-${s.student_id}`} className="accent-[var(--brand)]" />
+                      <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{s.student_name}</span>
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>({s.student_email})</span>
+                    </label>
+                  ))}
+                </div>
+                {(form.assigned_students || []).length > 0 && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--brand)', fontFamily: 'IBM Plex Sans' }}>{form.assigned_students.length} student(s) selected</p>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="text-xs uppercase tracking-widest font-medium mb-1 block" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>Title</label>
               <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} data-testid="assignment-title-input"
@@ -183,6 +256,7 @@ export default function Assignments() {
                   <span style={{ color: 'var(--text-primary)' }}>{s.student_name}</span>
                   <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{s.submitted_at?.slice(0, 10)}</span>
                 </div>
+                {s.original_filename && <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>File: {s.original_filename}</p>}
                 {s.grade && <span className="text-xs mt-1 inline-block px-2 py-0.5 border" style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>Grade: {s.grade}</span>}
                 {!s.grade && canCreate && (
                   <div className="flex gap-2 mt-2">
