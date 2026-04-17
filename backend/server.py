@@ -301,7 +301,7 @@ async def register(req: RegisterRequest, response: Response):
     set_auth_cookies(response, access, refresh)
 
     return user
-    @api_router.post("/auth/login")
+@api_router.post("/auth/login")
 async def login(req: LoginRequest, response: Response):
     email = req.email.lower().strip()
 
