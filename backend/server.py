@@ -387,7 +387,7 @@ async def google_callback(req: GoogleCallbackRequest, response: Response):
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Google auth failed: {str(e)}")
-        @api_router.post("/auth/microsoft-callback")
+@api_router.post("/auth/microsoft-callback")
 async def microsoft_callback():
     raise HTTPException(status_code=501, detail="Microsoft auth coming soon. Configure Azure AD credentials to enable.")
 
