@@ -1,33 +1,24 @@
 import axios from 'axios';
 
-// ✅ Correct env variable + fallback
+// ✅ Backend URL (env + fallback)
 const BACKEND_URL =
   process.env.REACT_APP_API_URL ||
   "https://ciqura-labs-tool.onrender.com";
 
-// ✅ Axios instance
+// ✅ Axios instance (cookie-based auth)
 const api = axios.create({
   baseURL: `${BACKEND_URL}/api`,
-  withCredentials: true,
+  withCredentials: true, // 🔥 VERY IMPORTANT for cookies
   headers: {
     'Content-Type': 'application/json'
   }
 });
 
 
-// 🔥 ADD THIS BLOCK HERE (VERY IMPORTANT)
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
+// ❌ NO request interceptor (no Authorization header)
 
 
-// ✅ Response interceptor (auto refresh token)
+// ✅ Response interceptor (optional refresh handling)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -41,12 +32,13 @@ api.interceptors.response.use(
 
     if (
       error.response?.status === 401 &&
-      !error.config._retry &&
+      !error.config?._retry &&
       !isAuthEndpoint
     ) {
       error.config._retry = true;
 
       try {
+        // 🔄 try refreshing cookie session
         await axios.post(
           `${BACKEND_URL}/api/auth/refresh`,
           {},
@@ -55,6 +47,7 @@ api.interceptors.response.use(
 
         return api(error.config);
       } catch {
+        // 🔒 redirect to login if refresh fails
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
