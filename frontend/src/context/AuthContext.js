@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../lib/api';
 
 const AuthContext = createContext(null);
@@ -7,48 +7,78 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const checkAuth = useCallback(async () => {
-    try {
-      const res = await api.get('/auth/me');
-      setUser(res.data);
-      return res.data;
-    } catch {
-      setUser(null);
-      return null;
-    } finally {
-      setLoading(false);
+  // 🔁 Load user from localStorage on refresh
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const storedUser = localStorage.getItem("user");
+
+    if (token && storedUser) {
+      setUser(JSON.parse(storedUser));
     }
+
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    // CRITICAL: If returning from OAuth callback, skip the /me check.
-    // AuthCallback will exchange the session_id and establish the session first.
-    if (window.location.hash?.includes('session_id=')) {
-      setLoading(false);
-      return;
-    }
-    checkAuth();
-  }, [checkAuth]);
-
+  // 🔐 LOGIN (JWT)
   const login = async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
-    setUser(res.data);
-    return res.data;
+
+    const { access_token, user } = res.data;
+
+    // ✅ store token + user
+    localStorage.setItem("token", access_token);
+    localStorage.setItem("user", JSON.stringify(user));
+
+    setUser(user);
+
+    return user;
   };
 
+  // 🆕 REGISTER
   const register = async (email, password, name) => {
     const res = await api.post('/auth/register', { email, password, name });
-    setUser(res.data);
-    return res.data;
+
+    const { access_token, user } = res.data;
+
+    localStorage.setItem("token", access_token);
+    localStorage.setItem("user", JSON.stringify(user));
+
+    setUser(user);
+
+    return user;
   };
 
-  const logout = async () => {
-    await api.post('/auth/logout');
+  // 🔵 GOOGLE LOGIN
+  const googleLogin = async (access_token) => {
+    const res = await api.post('/auth/google-callback', { access_token });
+
+    const { access_token: jwtToken, user } = res.data;
+
+    localStorage.setItem("token", jwtToken);
+    localStorage.setItem("user", JSON.stringify(user));
+
+    setUser(user);
+  };
+
+  // 🚪 LOGOUT
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, login, register, logout, checkAuth }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        setUser,
+        loading,
+        login,
+        register,
+        logout,
+        googleLogin
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
