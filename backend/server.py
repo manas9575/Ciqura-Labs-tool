@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 from pathlib import Path
+import os
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -7,7 +9,6 @@ from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -21,17 +22,29 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
-from auth import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
-from storage import init_storage, put_object, get_object, APP_NAME
-from email_service import send_email, send_fee_reminder, send_assignment_notification, send_announcement
+from backend.auth import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from backend.storage import init_storage, put_object, get_object, APP_NAME
+from backend.email_service import send_email, send_fee_reminder, send_assignment_notification, send_announcement
 
-mongo_url = os.environ['MONGO_URL']
+# ✅ SAFE ENV HANDLING
+mongo_url = os.getenv("MONGO_URL")
+db_name = os.getenv("DB_NAME")
+
+print("ENV CHECK:", mongo_url, db_name)
+
+if not mongo_url:
+    raise Exception("❌ MONGO_URL is not set")
+if not db_name:
+    raise Exception("❌ DB_NAME is not set")
+
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[db_name]
 
+# ✅ FastAPI app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+# ✅ Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
