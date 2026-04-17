@@ -4,7 +4,7 @@ import requests
 
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = os.environ.get("APP_NAME", "coaching-hub")
+APP_NAME = os.environ.get("APP_NAME", "Ciqura-Labs")
 
 logger = logging.getLogger(__name__)
 

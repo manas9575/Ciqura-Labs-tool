@@ -158,7 +158,7 @@ class SettingsUpdate(BaseModel):
     theme: Optional[str] = None
 
 class RoleUpdate(BaseModel):
-    role: str
+    role: str  # Can be comma-separated for dual roles e.g. "admin,faculty"
 
 class EmailSend(BaseModel):
     to: str
@@ -230,6 +230,9 @@ def clear_auth_cookies(response: Response):
     response.delete_cookie(key="access_token", path="/")
     response.delete_cookie(key="refresh_token", path="/")
 
+def user_has_role(user: dict, *roles) -> bool:
+    user_roles = [r.strip() for r in user.get("role", "").split(",")]
+    return any(r in user_roles for r in roles)
 # ─── Auth Endpoints ───
 @api_router.post("/auth/register")
 async def register(req: RegisterRequest, response: Response):
@@ -358,7 +361,7 @@ async def refresh_token(request: Request, response: Response):
 @api_router.get("/users")
 async def list_users(request: Request, role: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     query = {}
     if role:
@@ -369,9 +372,9 @@ async def list_users(request: Request, role: Optional[str] = None):
 @api_router.put("/users/{user_id}/role")
 async def update_user_role(user_id: str, req: RoleUpdate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
-    if req.role == "super_admin" and user["role"] != "super_admin":
+    if req.role == "super_admin" and not user_has_role(user, "super_admin"):
         raise HTTPException(status_code=403, detail="Only super_admin can assign super_admin role")
     await db.users.update_one({"user_id": user_id}, {"$set": {"role": req.role}})
     return {"message": "Role updated"}
@@ -379,7 +382,7 @@ async def update_user_role(user_id: str, req: RoleUpdate, request: Request):
 @api_router.delete("/users/{user_id}")
 async def delete_user(user_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.users.delete_one({"user_id": user_id})
     return {"message": "User deleted"}
@@ -388,7 +391,7 @@ async def delete_user(user_id: str, request: Request):
 @api_router.post("/courses")
 async def create_course(req: CourseCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     course_id = f"course_{uuid.uuid4().hex[:12]}"
     code = make_course_code(req.name, req.duration)
@@ -409,13 +412,13 @@ async def create_course(req: CourseCreate, request: Request):
 @api_router.get("/courses")
 async def list_courses(request: Request):
     user = await get_current_user(request)
-    if user["role"] == "student":
+    if user_has_role(user, "student"):
         enrollments = await db.enrollments.find({"student_id": user["user_id"]}, {"_id": 0, "course_id": 1}).to_list(1000)
         course_ids = [e["course_id"] for e in enrollments]
         courses = await db.courses.find({"course_id": {"$in": course_ids}}, {"_id": 0}).to_list(1000)
         for c in courses:
             c.pop("fee_structure", None)
-    elif user["role"] == "faculty":
+    elif user_has_role(user, "faculty"):
         my_batches = await db.batches.find({"faculty_id": user["user_id"]}, {"_id": 0, "course_id": 1}).to_list(100)
         course_ids = list(set(b["course_id"] for b in my_batches))
         courses = await db.courses.find({"course_id": {"$in": course_ids}}, {"_id": 0}).to_list(1000)
@@ -434,7 +437,7 @@ async def get_course(course_id: str, request: Request):
 @api_router.put("/courses/{course_id}")
 async def update_course(course_id: str, req: CourseUpdate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
     if updates:
@@ -444,7 +447,7 @@ async def update_course(course_id: str, req: CourseUpdate, request: Request):
 @api_router.delete("/courses/{course_id}")
 async def delete_course(course_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.courses.delete_one({"course_id": course_id})
     return {"message": "Course deleted"}
@@ -453,7 +456,7 @@ async def delete_course(course_id: str, request: Request):
 @api_router.post("/batches")
 async def create_batch(req: BatchCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     batch_id = f"batch_{uuid.uuid4().hex[:12]}"
     course = await db.courses.find_one({"course_id": req.course_id}, {"_id": 0, "name": 1})
@@ -477,9 +480,9 @@ async def list_batches(request: Request, course_id: Optional[str] = None):
     query = {}
     if course_id:
         query["course_id"] = course_id
-    if user["role"] == "faculty":
+    if user_has_role(user, "faculty"):
         query["faculty_id"] = user["user_id"]
-    elif user["role"] == "student":
+    elif user_has_role(user, "student"):
         enrollments = await db.enrollments.find({"student_id": user["user_id"]}, {"_id": 0, "batch_id": 1}).to_list(100)
         query["batch_id"] = {"$in": [e["batch_id"] for e in enrollments]}
     batches = await db.batches.find(query, {"_id": 0}).to_list(1000)
@@ -495,7 +498,7 @@ async def list_batches(request: Request, course_id: Optional[str] = None):
 @api_router.delete("/batches/{batch_id}")
 async def delete_batch(batch_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.batches.delete_one({"batch_id": batch_id})
     return {"message": "Batch deleted"}
@@ -504,7 +507,7 @@ async def delete_batch(batch_id: str, request: Request):
 @api_router.post("/enrollments")
 async def create_enrollment(req: EnrollmentCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     existing = await db.enrollments.find_one({"student_id": req.student_id, "batch_id": req.batch_id}, {"_id": 0})
     if existing:
@@ -529,7 +532,7 @@ async def list_enrollments(request: Request, student_id: Optional[str] = None, c
         query["course_id"] = course_id
     if batch_id:
         query["batch_id"] = batch_id
-    if user["role"] == "student":
+    if user_has_role(user, "student"):
         query["student_id"] = user["user_id"]
     enrollments = await db.enrollments.find(query, {"_id": 0}).to_list(1000)
     for e in enrollments:
@@ -545,7 +548,7 @@ async def list_enrollments(request: Request, student_id: Optional[str] = None, c
 @api_router.delete("/enrollments/{enrollment_id}")
 async def delete_enrollment(enrollment_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.enrollments.delete_one({"enrollment_id": enrollment_id})
     return {"message": "Enrollment deleted"}
@@ -554,7 +557,7 @@ async def delete_enrollment(enrollment_id: str, request: Request):
 @api_router.post("/attendance")
 async def mark_attendance(req: AttendanceCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["faculty", "admin", "super_admin"]:
+    if not user_has_role(user, "faculty", "admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     results = []
     for record in req.records:
@@ -589,7 +592,7 @@ async def list_attendance(request: Request, batch_id: Optional[str] = None, stud
         query["student_id"] = student_id
     if date:
         query["date"] = date
-    if user["role"] == "student":
+    if user_has_role(user, "student"):
         query["student_id"] = user["user_id"]
     records = await db.attendance.find(query, {"_id": 0}).to_list(5000)
     for r in records:
@@ -601,7 +604,7 @@ async def list_attendance(request: Request, batch_id: Optional[str] = None, stud
 @api_router.post("/assignments")
 async def create_assignment(req: AssignmentCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["faculty", "admin", "super_admin"]:
+    if not user_has_role(user, "faculty", "admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     assignment_id = f"assgn_{uuid.uuid4().hex[:12]}"
     assignment = {
@@ -621,11 +624,11 @@ async def list_assignments(request: Request, batch_id: Optional[str] = None):
     query = {}
     if batch_id:
         query["batch_id"] = batch_id
-    if user["role"] == "student":
+    if user_has_role(user, "student"):
         enrollments = await db.enrollments.find({"student_id": user["user_id"]}, {"_id": 0, "batch_id": 1}).to_list(1000)
         batch_ids = [e["batch_id"] for e in enrollments]
         query["batch_id"] = {"$in": batch_ids}
-    elif user["role"] == "faculty":
+    elif user_has_role(user, "faculty"):
         batches = await db.batches.find({"faculty_id": user["user_id"]}, {"_id": 0, "batch_id": 1}).to_list(1000)
         batch_ids = [b["batch_id"] for b in batches]
         if not batch_id:
@@ -633,7 +636,7 @@ async def list_assignments(request: Request, batch_id: Optional[str] = None):
     assignments = await db.assignments.find(query, {"_id": 0}).to_list(1000)
     filtered = []
     for a in assignments:
-        if user["role"] == "student" and a.get("assigned_students") and user["user_id"] not in a["assigned_students"]:
+        if user_has_role(user, "student") and a.get("assigned_students") and user["user_id"] not in a["assigned_students"]:
             continue
         batch = await db.batches.find_one({"batch_id": a["batch_id"]}, {"_id": 0, "name": 1, "course_id": 1})
         a["batch_name"] = batch["name"] if batch else "Unknown"
@@ -644,7 +647,7 @@ async def list_assignments(request: Request, batch_id: Optional[str] = None):
             a["course_name"] = "Unknown"
         sub_count = await db.submissions.count_documents({"assignment_id": a["assignment_id"]})
         a["submission_count"] = sub_count
-        if user["role"] == "student":
+        if user_has_role(user, "student"):
             sub = await db.submissions.find_one({"assignment_id": a["assignment_id"], "student_id": user["user_id"]}, {"_id": 0})
             a["my_submission"] = sub
         filtered.append(a)
@@ -653,7 +656,7 @@ async def list_assignments(request: Request, batch_id: Optional[str] = None):
 @api_router.delete("/assignments/{assignment_id}")
 async def delete_assignment(assignment_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["faculty", "admin", "super_admin"]:
+    if not user_has_role(user, "faculty", "admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.assignments.delete_one({"assignment_id": assignment_id})
     return {"message": "Assignment deleted"}
@@ -688,7 +691,7 @@ async def list_submissions(request: Request, assignment_id: Optional[str] = None
     query = {}
     if assignment_id:
         query["assignment_id"] = assignment_id
-    if user["role"] == "student":
+    if user_has_role(user, "student"):
         query["student_id"] = user["user_id"]
     submissions = await db.submissions.find(query, {"_id": 0}).to_list(1000)
     for s in submissions:
@@ -699,7 +702,7 @@ async def list_submissions(request: Request, assignment_id: Optional[str] = None
 @api_router.put("/submissions/{submission_id}/grade")
 async def grade_submission(submission_id: str, req: SubmissionGrade, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["faculty", "admin", "super_admin"]:
+    if not user_has_role(user, "faculty", "admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.submissions.update_one(
         {"submission_id": submission_id},
@@ -711,7 +714,7 @@ async def grade_submission(submission_id: str, req: SubmissionGrade, request: Re
 @api_router.post("/fees")
 async def create_fee(req: FeeCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     
     if req.installments > 1:
@@ -749,7 +752,7 @@ async def list_fees(request: Request, student_id: Optional[str] = None):
     query = {}
     if student_id:
         query["student_id"] = student_id
-    elif user["role"] == "student":
+    elif user_has_role(user, "student"):
         query["student_id"] = user["user_id"]
     fees = await db.fees.find(query, {"_id": 0}).to_list(1000)
     for f in fees:
@@ -795,7 +798,7 @@ async def list_payments(request: Request, student_id: Optional[str] = None):
     query = {}
     if student_id:
         query["student_id"] = student_id
-    elif user["role"] == "student":
+    elif user_has_role(user, "student"):
         query["student_id"] = user["user_id"]
     payments = await db.payments.find(query, {"_id": 0}).to_list(1000)
     for p in payments:
@@ -809,7 +812,7 @@ async def generate_receipt(payment_id: str, request: Request):
     payment = await db.payments.find_one({"payment_id": payment_id}, {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    if user["role"] == "student" and payment["student_id"] != user["user_id"]:
+    if user_has_role(user, "student") and payment["student_id"] != user["user_id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     student = await db.users.find_one({"user_id": payment["student_id"]}, {"_id": 0})
@@ -929,7 +932,7 @@ async def download_file(file_id: str, request: Request):
 @api_router.delete("/files/{file_id}")
 async def delete_file(file_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["faculty", "admin", "super_admin"]:
+    if not user_has_role(user, "faculty", "admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.files.update_one({"file_id": file_id}, {"$set": {"is_deleted": True}})
     return {"message": "File deleted"}
@@ -938,7 +941,7 @@ async def delete_file(file_id: str, request: Request):
 @api_router.post("/notifications")
 async def create_notification(req: NotificationCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["faculty", "admin", "super_admin"]:
+    if not user_has_role(user, "faculty", "admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     if req.user_id:
         targets = [req.user_id]
@@ -1040,7 +1043,7 @@ async def get_dashboard_stats(request: Request):
             stats["total_revenue"] += sum(p["amount"] for p in pmts)
         stats["total_assignments"] = await db.assignments.count_documents({})
     
-    elif user["role"] == "faculty":
+    elif user_has_role(user, "faculty"):
         my_batches = await db.batches.find({"faculty_id": user["user_id"]}, {"_id": 0}).to_list(100)
         batch_ids = [b["batch_id"] for b in my_batches]
         stats["total_batches"] = len(my_batches)
@@ -1048,7 +1051,7 @@ async def get_dashboard_stats(request: Request):
         stats["total_assignments"] = await db.assignments.count_documents({"batch_id": {"$in": batch_ids}})
         stats["pending_submissions"] = await db.submissions.count_documents({"grade": None})
     
-    elif user["role"] == "student":
+    elif user_has_role(user, "student"):
         enrollments = await db.enrollments.find({"student_id": user["user_id"]}, {"_id": 0}).to_list(100)
         batch_ids = [e["batch_id"] for e in enrollments]
         stats["total_courses"] = len(enrollments)
@@ -1067,7 +1070,7 @@ async def get_dashboard_stats(request: Request):
 @api_router.get("/analytics/revenue")
 async def revenue_analytics(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     payments = await db.payments.find({}, {"_id": 0}).to_list(10000)
     monthly = {}
@@ -1079,7 +1082,7 @@ async def revenue_analytics(request: Request):
 @api_router.get("/analytics/enrollment")
 async def enrollment_analytics(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     courses = await db.courses.find({}, {"_id": 0}).to_list(100)
     result = []
@@ -1106,7 +1109,7 @@ async def attendance_analytics(request: Request):
 @api_router.get("/export/students")
 async def export_students(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     students = await db.users.find({"role": "student"}, {"_id": 0, "password_hash": 0}).to_list(10000)
     output = StringIO()
@@ -1120,7 +1123,7 @@ async def export_students(request: Request):
 @api_router.get("/export/fees")
 async def export_fees(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     fees = await db.fees.find({}, {"_id": 0}).to_list(10000)
     for f in fees:
@@ -1144,11 +1147,11 @@ async def get_course_detail(course_id: str, request: Request):
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    if user["role"] == "student":
+    if user_has_role(user, "student"):
         enrollment = await db.enrollments.find_one({"student_id": user["user_id"], "course_id": course_id}, {"_id": 0})
         if not enrollment:
             raise HTTPException(status_code=403, detail="Not enrolled in this course")
-    elif user["role"] == "faculty":
+    elif user_has_role(user, "faculty"):
         batches = await db.batches.find({"course_id": course_id, "faculty_id": user["user_id"]}, {"_id": 0}).to_list(100)
         if not batches:
             raise HTTPException(status_code=403, detail="Not assigned to this course")
@@ -1183,7 +1186,7 @@ async def get_course_detail(course_id: str, request: Request):
         "materials": materials, "resources": resources, "assignments": assignments,
         "total_students": len(students), "total_batches": len(batches)
     }
-    if user["role"] == "student":
+    if user_has_role(user, "student"):
         result.pop("fee_structure", None)
     return result
 
@@ -1214,7 +1217,7 @@ async def get_batch_detail(batch_id: str, request: Request):
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
     
-    if user["role"] == "faculty" and batch["faculty_id"] != user["user_id"]:
+    if user_has_role(user, "faculty") and batch["faculty_id"] != user["user_id"]:
         raise HTTPException(status_code=403, detail="Not assigned to this batch")
     
     course = await db.courses.find_one({"course_id": batch["course_id"]}, {"_id": 0})
@@ -1274,7 +1277,7 @@ async def get_user_profile(user_id: str, request: Request):
     att_total = await db.attendance.count_documents({"student_id": user_id})
     att_present = await db.attendance.count_documents({"student_id": user_id, "status": "present"})
     
-    if user["role"] == "faculty":
+    if user_has_role(user, "faculty"):
         batches = await db.batches.find({"faculty_id": user_id}, {"_id": 0}).to_list(100)
         for b in batches:
             c = await db.courses.find_one({"course_id": b["course_id"]}, {"_id": 0, "name": 1})
@@ -1307,7 +1310,7 @@ async def update_user_profile(user_id: str, req: UserProfileUpdate, request: Req
 @api_router.post("/holidays")
 async def create_holiday(req: HolidayCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     hid = f"holiday_{uuid.uuid4().hex[:12]}"
     holiday = {"holiday_id": hid, "date": req.date, "name": req.name, "description": req.description, "created_at": datetime.now(timezone.utc).isoformat()}
@@ -1324,7 +1327,7 @@ async def list_holidays(request: Request):
 @api_router.delete("/holidays/{holiday_id}")
 async def delete_holiday(holiday_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.holidays.delete_one({"holiday_id": holiday_id})
     return {"message": "Holiday deleted"}
@@ -1333,7 +1336,7 @@ async def delete_holiday(holiday_id: str, request: Request):
 @api_router.post("/leaves")
 async def apply_leave(req: LeaveCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["faculty", "admin", "super_admin"]:
+    if not user_has_role(user, "faculty", "admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Only faculty/admin can apply for leave")
     lid = f"leave_{uuid.uuid4().hex[:12]}"
     leave = {
@@ -1351,7 +1354,7 @@ async def list_leaves(request: Request, user_id: Optional[str] = None, status: O
     query = {}
     if user_id:
         query["user_id"] = user_id
-    elif user["role"] == "faculty":
+    elif user_has_role(user, "faculty"):
         query["user_id"] = user["user_id"]
     if status:
         query["status"] = status
@@ -1361,7 +1364,7 @@ async def list_leaves(request: Request, user_id: Optional[str] = None, status: O
 @api_router.put("/leaves/{leave_id}/status")
 async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["super_admin", "admin"]:
+    if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
     await db.leaves.update_one({"leave_id": leave_id}, {"$set": {"status": req.status}})
     if req.status == "approved":

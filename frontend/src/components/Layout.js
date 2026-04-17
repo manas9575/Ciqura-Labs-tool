@@ -157,7 +157,7 @@ export default function Layout() {
             <NavLink to="/notifications" data-testid="notifications-btn" className="p-2 transition-colors duration-150 hover:bg-[var(--surface)]" style={{ color: 'var(--text-secondary)' }}>
               <Bell size={18} />
             </NavLink>
-            <div className="flex items-center gap-2 pl-4 border-l" style={{ borderColor: 'var(--border)' }}>
+            <NavLink to={`/students/${user?.user_id}`} className="flex items-center gap-2 pl-4 border-l cursor-pointer transition-colors duration-150 hover:bg-[var(--surface)] px-2 py-1" style={{ borderColor: 'var(--border)' }} data-testid="my-profile-link">
               {user?.picture ? (
                 <img src={user.picture} alt="" className="w-7 h-7 rounded-full" />
               ) : (
@@ -169,7 +169,7 @@ export default function Layout() {
                 <p className="text-sm font-medium leading-tight" style={{ color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans' }}>{user?.name}</p>
                 <p className="text-xs uppercase tracking-widest" style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Sans' }}>{roleLabel}</p>
               </div>
-            </div>
+            </NavLink>
           </div>
         </header>
 
