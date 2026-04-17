@@ -1537,8 +1537,8 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://ciqura-labs-tool.vercel.app",
         "https://ciqura-labs-tool-lznd9ffpc-maa2.vercel.app",
-         "https://ciqura-labs-tool.vercel.app"
         "http://localhost:3000"
     ],
     allow_origin_regex=r"https://.*\.vercel\.app",
