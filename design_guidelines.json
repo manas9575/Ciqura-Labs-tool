@@ -1,0 +1,148 @@
+{
+  "project_name": "Nexus Institute Coaching Management System",
+  "design_vision": {
+    "theme": "Light (with Dark Mode Support)",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "core_philosophy": "Functional beauty through clarity, data density, and stark contrast. Prioritize grid-based structure, removing unnecessary decoration to focus purely on educational content, tracking metrics, and administrative control. High-tech, serious, and authoritative.",
+    "emotional_tone": "Authoritative, Precise, Professional, Modern SaaS"
+  },
+  "typography": {
+    "rules": {
+      "headings_banned": ["Inter", "Roboto", "Open Sans", "Lato", "Syne"],
+      "typesetting": "Tight tracking on large headers. Wide tracking on tiny uppercase labels. High legibility body font for data tables.",
+      "hierarchy_gap": "Do not exceed 2 Tailwind steps between heading and subheading."
+    },
+    "fonts": {
+      "heading": {
+        "family": "Outfit",
+        "weights": ["300", "500", "700"],
+        "class": "font-sans",
+        "import_url": "https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap"
+      },
+      "body": {
+        "family": "IBM Plex Sans",
+        "weights": ["400", "500", "600"],
+        "class": "font-mono",
+        "import_url": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      }
+    },
+    "scales": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none font-bold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-none font-medium",
+      "h3": "text-xl sm:text-2xl tracking-tight font-medium",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "label": "text-xs uppercase tracking-[0.2em] font-medium"
+    }
+  },
+  "colors": {
+    "strategy": "90% Monochrome structural UI. Color is used strictly for function (actions, alerts, status). No ambient gradients.",
+    "light_mode": {
+      "background": "#FFFFFF",
+      "surface": "#F4F4F5",
+      "border": "#E4E4E7",
+      "text_primary": "#0A0A0A",
+      "text_secondary": "#52525B",
+      "brand_primary": "#002FA7",
+      "brand_primary_hover": "#001D66",
+      "accent_alert": "#FF2A00",
+      "accent_warning": "#FFCC00",
+      "accent_success": "#00C853"
+    },
+    "dark_mode": {
+      "background": "#09090B",
+      "surface": "#18181B",
+      "border": "#27272A",
+      "text_primary": "#FAFAFA",
+      "text_secondary": "#A1A1AA",
+      "brand_primary": "#2563EB",
+      "brand_primary_hover": "#3B82F6",
+      "accent_alert": "#EF4444",
+      "accent_warning": "#F59E0B",
+      "accent_success": "#10B981"
+    }
+  },
+  "surfaces_and_borders": {
+    "style": "Grid Borders (The 'Technical' Look)",
+    "border_radius": "rounded-none or rounded-sm (max 2px)",
+    "shadows": "None. Rely on 1px borders and high-contrast color shifts on hover for depth.",
+    "dashboard_cards": "Flat background, 1px solid border, no shadow. On hover, apply a slight border color shift to brand_primary, no translateY.",
+    "headers_nav": "Solid background (white/black) with a hard 1px bottom border. Sidebar with hard 1px right border.",
+    "glassmorphism": "Avoid in dashboard context for data clarity. Use pure solid colors."
+  },
+  "spacing_and_layout": {
+    "generous_padding": true,
+    "scale": "p-4, p-6, p-8, p-12",
+    "dashboard_grid": {
+      "base": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4",
+      "gap": "gap-px bg-border (to create pure 1px grid lines between elements)",
+      "widget_spans": {
+        "summary_metric": "col-span-1",
+        "primary_chart": "col-span-2 row-span-2 lg:col-span-3",
+        "data_feed": "col-span-1 row-span-2"
+      }
+    },
+    "alignment": "Optical alignment. Left-align dense data, labels, and forms. Center only empty states or prominent CTAs."
+  },
+  "components": {
+    "strategy": "Shadcn UI heavily customized to strip 'soft' elements.",
+    "customizations": {
+      "Button": "Sharp corners (rounded-none), high contrast, solid block. Hover state changes text/bg aggressively.",
+      "Card": "Remove default shadow. Add 1px border. Use generous p-6 inner padding.",
+      "Input": "Square corners, dark borders on focus, no soft rings.",
+      "Table": "Dense spacing, left-aligned, distinct bottom borders for rows, zebra striping optional for large sets.",
+      "Tabs": "Override default soft pill styles with brutalist bottom-border underlines or solid blocks."
+    }
+  },
+  "motion": {
+    "strategy": "Snappy, functional, micro-interactions only.",
+    "transitions": "transition-colors duration-150 ease-in-out (for buttons/links)",
+    "hover_states": "Must explicitly set text color on hover. Focus states must have higher contrast than default.",
+    "accessibility": "Respect prefers-reduced-motion."
+  },
+  "icons_and_assets": {
+    "library": "@phosphor-icons/react",
+    "rationale": "Perfect for dense dashboards, available in varying weights (use Regular or Duotone for active states)."
+  },
+  "media_urls": {
+    "institute_logo": {
+      "url": "https://images.unsplash.com/photo-1618243329711-359c196ffb38?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwxfHxsZXR0ZXIlMjBtJTIwbWluaW1hbCUyMGxvZ298ZW58MHx8fHwxNzc2NDA2MTAxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Minimalist square logo for the Institute.",
+      "category": "branding"
+    },
+    "course_aiml": {
+      "url": "https://images.unsplash.com/photo-1674027444636-ce7379d51252?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHxhcnRpZmljaWFsJTIwaW50ZWxsaWdlbmNlJTIwbm9kZSUyMHN0cnVjdHVyZXxlbnwwfHx8fDE3NzY0MDYwOTZ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract circular node pattern representing AI and ML.",
+      "category": "course_cover"
+    },
+    "course_cybersecurity": {
+      "url": "https://images.unsplash.com/photo-1654588831833-6658f38580dc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxjeWJlcnNlY3VyaXR5JTIwbG9jayUyMGRhcmt8ZW58MHx8fHwxNzc2NDA2MDk2fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Dark thematic lock image on a computer, symbolizing cybersecurity.",
+      "category": "course_cover"
+    },
+    "course_python": {
+      "url": "https://images.unsplash.com/photo-1660616246653-e2c57d1077b9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHxweXRob24lMjBjb2RlJTIwc2NyZWVufGVufDB8fHx8MTc3NjQwNjA5Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "Terminal code screen representing Python programming.",
+      "category": "course_cover"
+    },
+    "abstract_background": {
+      "url": "https://images.unsplash.com/photo-1772047678634-723339be7f7d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwdGVjaCUyMGFic3RyYWN0JTIwd2hpdGV8ZW58MHx8fHwxNzc2NDA2MTAxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Subtle abstract texture for login pages or empty states.",
+      "category": "background"
+    }
+  },
+  "specific_features": {
+    "pdf_invoices": "Must use monochrome, highly structured layouts with clear typography. Include Institute Logo. Replicate the brutalist Swiss grid style in the PDF layout.",
+    "role_dashboards": "Differentiate role dashboards using layout density. Super Admin needs dense data metrics. Student needs visual course cards and clear progress bars.",
+    "testing_attributes": "All buttons, tabs, links, inputs must have data-testid (e.g., data-testid='student-course-card')."
+  },
+  "instructions_to_main_agent": [
+    "Install custom fonts using Google Fonts import in index.css.",
+    "Install @phosphor-icons/react for iconography.",
+    "Configure Tailwind config with the custom colors provided.",
+    "Modify Shadcn components globally to have rounded-none or rounded-sm, removing all shadow defaults.",
+    "Build the dashboard layout using CSS Grid with exact gap rules (The 'Control Room' pattern).",
+    "Ensure all data tables (Fees, Attendance) left-align their text and use high-contrast row separators.",
+    "Never use generic placeholder images; rely solely on the media_urls provided in this JSON."
+  ]
+}
