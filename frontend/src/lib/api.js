@@ -7,12 +7,25 @@ const BACKEND_URL =
 
 // ✅ Axios instance
 const api = axios.create({
-  baseURL: `${BACKEND_URL}/api`, // ⚠️ keep /api only if your backend uses it
+  baseURL: `${BACKEND_URL}/api`,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   }
 });
+
+
+// 🔥 ADD THIS BLOCK HERE (VERY IMPORTANT)
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
 
 // ✅ Response interceptor (auto refresh token)
 api.interceptors.response.use(
@@ -26,7 +39,6 @@ api.interceptors.response.use(
       url.includes('/auth/login') ||
       url.includes('/auth/register');
 
-    // 🔄 Handle token expiry
     if (
       error.response?.status === 401 &&
       !error.config._retry &&
@@ -43,7 +55,6 @@ api.interceptors.response.use(
 
         return api(error.config);
       } catch {
-        // 🔒 Redirect to login if refresh fails
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
