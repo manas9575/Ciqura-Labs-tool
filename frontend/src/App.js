@@ -22,6 +22,7 @@ import Analytics from './pages/Analytics';
 import Notifications from './pages/Notifications';
 import Holidays from './pages/Holidays';
 import Leaves from './pages/Leaves';
+import AdminNotifications from "./pages/AdminNotifications";
 
 
 // 🔐 Protected Route
@@ -106,6 +107,7 @@ function AppRouter() {
         <Route path="notifications" element={<Notifications />} />
         <Route path="holidays" element={<Holidays />} />
         <Route path="leaves" element={<Leaves />} />
+        <Route path="admin/notifications" element={<AdminNotifications />} />
       </Route>
 
       {/* Catch-all route */}
