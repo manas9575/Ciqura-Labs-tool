@@ -22,6 +22,8 @@ const navItems = {
     { to: '/holidays', icon: CalendarBlank, label: 'Holidays' },
     { to: '/analytics', icon: ChartBar, label: 'Analytics' },
     { to: '/settings', icon: Gear, label: 'Settings' },
+    { to: '/users', icon: Users, label: 'All Users' }
+    { to: '/users', icon: Users, label: 'All Users' }
   ],
   admin: [
     { to: '/dashboard', icon: House, label: 'Dashboard' },
