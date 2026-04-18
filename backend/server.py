@@ -425,12 +425,31 @@ async def refresh_token(request: Request, response: Response):
 @api_router.get("/users")
 async def list_users(request: Request, role: Optional[str] = None):
     user = await get_current_user(request)
+
     if not user_has_role(user, "super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
+
     query = {}
-    if role:
+
+    # ✅ handle different roles properly
+    if role == "students":
+        query["role"] = "student"
+
+    elif role == "faculty":
+        query["role"] = "faculty"
+
+    elif role == "admins":
+        query["role"] = {"$in": ["admin", "super_admin"]}
+
+    elif role:  
+        # fallback (if exact role passed)
         query["role"] = role
-    users = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(1000)
+
+    users = await db.users.find(
+        query,
+        {"_id": 0, "password_hash": 0}
+    ).to_list(1000)
+
     return users
 
 @api_router.put("/users/{user_id}/role")
