@@ -32,9 +32,9 @@ export default function Attendance() {
 
       const mapped = {};
       res.data.forEach(a => {
-        if (a.status === 'approved') {
+        if (a.status === 'approved' || a.status === 'present') {
           mapped[a.student_id] = 'present';
-        } else if (a.status === 'rejected') {
+        } else if (a.status === 'rejected' || a.status === 'absent') {
           mapped[a.student_id] = 'absent';
         } else {
           mapped[a.student_id] = 'pending';
