@@ -129,6 +129,10 @@ class AttendanceCreate(BaseModel):
     records: List[dict]  # [{student_id, status}]
     date: str
 
+class AttendanceRequest(BaseModel):
+    batch_id: str
+    date: str
+
 class AssignmentCreate(BaseModel):
     batch_id: str
     title: str
@@ -677,6 +681,11 @@ async def approve_attendance(attendance_id: str, request: Request):
     if not user_has_role(user, "admin", "faculty", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
 
+    attendance = await db.attendance.find_one({"attendance_id": attendance_id})
+
+    if not attendance:
+        raise HTTPException(status_code=404, detail="Not found")
+
     await db.attendance.update_one(
         {"attendance_id": attendance_id},
         {
@@ -687,15 +696,16 @@ async def approve_attendance(attendance_id: str, request: Request):
             }
         }
     )
+
+    # ✅ FIXED notification
     await db.notifications.insert_one({
-    "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
-    "user_id": attendance["student_id"],
-    "title": "Attendance Approved",
-    "message": "Your attendance has been approved",
-    "read": False,
-    "created_at": datetime.now(timezone.utc).isoformat()
-         }
-     )
+        "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+        "user_id": attendance["student_id"],
+        "title": "Attendance Approved",
+        "message": "Your attendance has been approved",
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
 
     return {"message": "Approved"}  
 
