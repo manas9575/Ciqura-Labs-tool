@@ -637,6 +637,76 @@ async def delete_enrollment(enrollment_id: str, request: Request):
     return {"message": "Enrollment deleted"}
 
 # ─── Attendance ───
+@api_router.post("/attendance/request")
+async def request_attendance(req: AttendanceCreate, request: Request):
+    user = await get_current_user(request)
+
+    if "student" not in user.get("roles", []):
+        raise HTTPException(status_code=403, detail="Only students can submit")
+
+    attendance = {
+        "attendance_id": f"att_{uuid.uuid4().hex[:12]}",
+        "student_id": user["user_id"],
+        "batch_id": req.batch_id,
+        "date": req.date,
+        "status": "pending",
+        "submitted_by": "student",
+        "approved_by": None,
+        "approved_at": None,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    await db.attendance.insert_one(attendance)
+    return {"message": "Attendance request submitted"}
+    
+@api_router.put("/attendance/{attendance_id}/approve")
+async def approve_attendance(attendance_id: str, request: Request):
+    user = await get_current_user(request)
+
+    if not user_has_role(user, "admin", "faculty", "super_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    await db.attendance.update_one(
+        {"attendance_id": attendance_id},
+        {
+            "$set": {
+                "status": "approved",
+                "approved_by": user["user_id"],
+                "approved_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+
+    return {"message": "Approved"}  
+
+@api_router.put("/attendance/{attendance_id}/reject")
+async def reject_attendance(attendance_id: str, request: Request):
+    user = await get_current_user(request)
+
+    if not user_has_role(user, "admin", "faculty", "super_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    await db.attendance.update_one(
+        {"attendance_id": attendance_id},
+        {"$set": {"status": "rejected"}}
+    )
+
+    return {"message": "Rejected"}
+    
+@api_router.get("/attendance/pending")
+async def pending_attendance(request: Request):
+    user = await get_current_user(request)
+
+    if not user_has_role(user, "admin", "faculty", "super_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    data = await db.attendance.find(
+        {"status": "pending"},
+        {"_id": 0}
+    ).to_list(100)
+
+    return data
+
 @api_router.post("/attendance")
 async def mark_attendance(req: AttendanceCreate, request: Request):
     user = await get_current_user(request)
