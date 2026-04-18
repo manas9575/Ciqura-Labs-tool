@@ -16,7 +16,7 @@ export default function Attendance() {
   const [pendingRequests, setPendingRequests] = useState([]);
 
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
+  const [message, setMessage] = useState('');
 
   const isFacultyOrAdmin = ['faculty', 'admin', 'super_admin'].includes(user?.role);
   const isStudent = user?.role === 'student';
@@ -26,37 +26,45 @@ export default function Attendance() {
     api.get('/batches').then(r => setBatches(r.data)).catch(() => {});
   }, []);
 
-  // 🔹 Load data when batch/date changes
+  // 🔹 Load students + attendance
   useEffect(() => {
     if (!selectedBatch) return;
 
     // students
     api.get(`/enrollments?batch_id=${selectedBatch}`).then(r => {
       setStudents(r.data);
+
       const initial = {};
-      r.data.forEach(e => { initial[e.student_id] = 'present'; });
+      r.data.forEach(e => { initial[e.student_id] = 'pending'; });
       setRecords(initial);
     });
 
     // existing attendance
     api.get(`/attendance?batch_id=${selectedBatch}&date=${date}`).then(r => {
       setExistingRecords(r.data);
+
       const existing = {};
-      r.data.forEach(a => { existing[a.student_id] = a.status; });
-      setRecords(prev => ({ ...prev, ...existing }));
+      r.data.forEach(a => {
+        existing[a.student_id] = a.status;
+      });
+
+      setRecords(prev => ({
+        ...prev,
+        ...existing
+      }));
     });
 
-    // pending requests (admin only)
+    // pending requests (admin)
     if (isFacultyOrAdmin) {
       api.get('/attendance/pending').then(r => setPendingRequests(r.data));
     }
 
   }, [selectedBatch, date]);
 
-  // ✅ SAVE ATTENDANCE (admin/faculty)
+  // 💾 SAVE ATTENDANCE
   const handleSave = async () => {
     setLoading(true);
-    setSuccess('');
+    setMessage('');
 
     try {
       const recordsList = Object.entries(records).map(([student_id, status]) => ({
@@ -70,18 +78,19 @@ export default function Attendance() {
         records: recordsList
       });
 
-      setSuccess('✅ Attendance saved successfully');
+      setMessage('✅ Attendance saved');
+
     } catch {
-      setSuccess('❌ Failed to save');
+      setMessage('❌ Failed to save');
     }
 
     setLoading(false);
   };
 
-  // ✅ STUDENT REQUEST ATTENDANCE
+  // 👨‍🎓 REQUEST ATTENDANCE
   const requestAttendance = async () => {
     setLoading(true);
-    setSuccess('');
+    setMessage('');
 
     try {
       await api.post('/attendance/request', {
@@ -89,9 +98,10 @@ export default function Attendance() {
         date
       });
 
-      setSuccess('✅ Attendance request submitted');
+      setMessage('✅ Request submitted');
+
     } catch (e) {
-      setSuccess(e?.response?.data?.detail || '❌ Failed');
+      setMessage(e?.response?.data?.detail || '❌ Failed');
     }
 
     setLoading(false);
@@ -109,12 +119,22 @@ export default function Attendance() {
     setPendingRequests(prev => prev.filter(p => p.attendance_id !== id));
   };
 
+  // 🎯 SORT STUDENTS (present first)
+  const sortedStudents = [...students].sort((a, b) => {
+    const s1 = records[a.student_id];
+    const s2 = records[b.student_id];
+
+    if (s1 === 'present' && s2 !== 'present') return -1;
+    if (s1 !== 'present' && s2 === 'present') return 1;
+    return 0;
+  });
+
   return (
-    <div>
+    <div className="p-4">
 
       <h1 className="text-2xl font-bold mb-4">Attendance</h1>
 
-      {/* SELECT */}
+      {/* FILTER */}
       <div className="flex gap-4 mb-6">
         <select value={selectedBatch} onChange={e => setSelectedBatch(e.target.value)}>
           <option value="">Select batch</option>
@@ -128,16 +148,17 @@ export default function Attendance() {
         <input type="date" value={date} onChange={e => setDate(e.target.value)} />
       </div>
 
-      {/* SUCCESS MESSAGE */}
-      {success && (
+      {/* MESSAGE */}
+      {message && (
         <div className="mb-4 text-sm font-medium">
-          {success}
+          {message}
         </div>
       )}
 
-      {/* 🧑‍🎓 STUDENT VIEW */}
+      {/* 👨‍🎓 STUDENT VIEW */}
       {isStudent && selectedBatch && (
         <div>
+
           <button
             onClick={requestAttendance}
             disabled={loading}
@@ -147,63 +168,110 @@ export default function Attendance() {
           </button>
 
           <div className="mt-4">
-            {existingRecords.map(r => (
-              <div key={r.attendance_id} className="border p-2 mb-2 flex justify-between">
-                <span>{r.date}</span>
-                <span className="flex items-center gap-1">
-                  {r.status === 'pending' && <Clock size={14} />}
-                  {r.status}
-                </span>
-              </div>
-            ))}
+            {existingRecords
+              .filter(r => r.student_id === user.user_id)
+              .map(r => (
+                <div key={r.attendance_id} className="border p-2 mb-2 flex justify-between">
+                  <span>{r.date}</span>
+
+                  <span className={`px-2 py-1 text-xs rounded ${
+                    r.status === 'approved'
+                      ? 'bg-green-100 text-green-700'
+                      : r.status === 'rejected'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {r.status}
+                  </span>
+                </div>
+              ))}
           </div>
+
         </div>
       )}
 
-      {/* 👨‍🏫 ADMIN/FACULTY VIEW */}
+      {/* 👨‍🏫 ADMIN / FACULTY VIEW */}
       {isFacultyOrAdmin && selectedBatch && (
         <div>
 
-          {/* MARK ATTENDANCE */}
-          {students.map(s => (
-            <div key={s.student_id} className="flex justify-between mb-2">
-              <span>{s.student_name}</span>
+          {/* TABLE */}
+          <div className="border">
 
-              <div className="flex gap-2">
-                <button onClick={() => setRecords({ ...records, [s.student_id]: 'present' })}>
-                  <Check />
-                </button>
-                <button onClick={() => setRecords({ ...records, [s.student_id]: 'absent' })}>
-                  <X />
-                </button>
+            {sortedStudents.map(s => (
+              <div key={s.student_id} className="flex justify-between items-center p-2 border-b">
+
+                <span>{s.student_name}</span>
+
+                <div className="flex items-center gap-3">
+
+                  {/* STATUS */}
+                  <span className={`px-2 py-1 text-xs border ${
+                    records[s.student_id] === 'present'
+                      ? 'text-green-600 border-green-600'
+                      : records[s.student_id] === 'absent'
+                      ? 'text-red-600 border-red-600'
+                      : 'text-yellow-600 border-yellow-600'
+                  }`}>
+                    {records[s.student_id]?.toUpperCase()}
+                  </span>
+
+                  {/* ACTION */}
+                  <button
+                    onClick={() => setRecords({ ...records, [s.student_id]: 'present' })}
+                    className="text-green-600"
+                  >
+                    <Check size={16} />
+                  </button>
+
+                  <button
+                    onClick={() => setRecords({ ...records, [s.student_id]: 'absent' })}
+                    className="text-red-600"
+                  >
+                    <X size={16} />
+                  </button>
+
+                  {/* SAVED */}
+                  {existingRecords.find(e => e.student_id === s.student_id) && (
+                    <span className="text-xs text-green-500">✔</span>
+                  )}
+
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
+          </div>
+
+          {/* SAVE BUTTON */}
           <button
             onClick={handleSave}
             disabled={loading}
-            className="mt-4 bg-green-600 text-white px-4 py-2 rounded"
+            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
           >
             {loading ? 'Saving...' : 'Save Attendance'}
           </button>
 
           {/* 🔥 PENDING REQUESTS */}
-          <h2 className="mt-8 font-bold">Pending Requests</h2>
+          <h2 className="mt-6 font-semibold">Pending Requests</h2>
 
           {pendingRequests.map(p => (
-            <div key={p.attendance_id} className="border p-2 flex justify-between mt-2">
+            <div key={p.attendance_id} className="flex justify-between border p-2 mt-2">
               <span>{p.student_name}</span>
 
               <div className="flex gap-2">
-                <button onClick={() => approve(p.attendance_id)} className="text-green-600">Approve</button>
-                <button onClick={() => reject(p.attendance_id)} className="text-red-600">Reject</button>
+                <button onClick={() => approve(p.attendance_id)} className="text-green-600">
+                  Approve
+                </button>
+
+                <button onClick={() => reject(p.attendance_id)} className="text-red-600">
+                  Reject
+                </button>
               </div>
             </div>
           ))}
 
         </div>
       )}
+
     </div>
   );
 }
