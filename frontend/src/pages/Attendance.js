@@ -15,37 +15,50 @@ export default function Attendance() {
   const [existingRecords, setExistingRecords] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
 
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
   const isFacultyOrAdmin = ['faculty', 'admin', 'super_admin'].includes(user?.role);
   const isStudent = user?.role === 'student';
 
   // 🔹 Load batches
   useEffect(() => {
-    api.get('/batches').then(r => setBatches(r.data)).catch(() => {});
+    api.get('/batches')
+      .then(r => setBatches(r.data))
+      .catch(() => {});
   }, []);
 
-  // 🔹 Load data
+  // 🔹 Load students + attendance
   useEffect(() => {
     if (!selectedBatch) return;
 
-    // Load students
-    api.get(`/enrollments?batch_id=${selectedBatch}`).then(r => {
-      setStudents(r.data);
-
-      const initial = {};
-      r.data.forEach(e => { initial[e.student_id] = 'pending'; });
-      setRecords(initial);
-    });
-
+    loadStudents();
     loadAttendance();
 
-    // Load pending requests
     if (isFacultyOrAdmin) {
-      api.get('/attendance/pending').then(r => setPendingRequests(r.data));
+      loadPending();
     }
 
   }, [selectedBatch, date]);
 
-  // 🔥 CENTRALIZED LOAD FUNCTION (IMPORTANT)
+  // 🔹 Load students
+  const loadStudents = async () => {
+    try {
+      const res = await api.get(`/enrollments?batch_id=${selectedBatch}`);
+      setStudents(res.data);
+
+      // initialize empty state
+      const initial = {};
+      res.data.forEach(s => {
+        initial[s.student_id] = '';
+      });
+
+      setRecords(initial);
+
+    } catch {}
+  };
+
+  // 🔥 Load attendance (FIXED)
   const loadAttendance = async () => {
     try {
       const res = await api.get(`/attendance?batch_id=${selectedBatch}&date=${date}`);
@@ -63,51 +76,81 @@ export default function Attendance() {
         }
       });
 
-      setRecords(prev => ({ ...prev, ...mapped }));
+      // ❗ overwrite (DO NOT MERGE)
+      setRecords(mapped);
 
     } catch {}
   };
 
-  // 💾 SAVE ATTENDANCE
+  // 🔹 Load pending
+  const loadPending = async () => {
+    try {
+      const res = await api.get('/attendance/pending');
+      setPendingRequests(res.data);
+    } catch {}
+  };
+
+  // 💾 Save attendance
   const handleSave = async () => {
-    const recordsList = Object.entries(records).map(([student_id, status]) => ({
-      student_id,
-      status
-    }));
+    setLoading(true);
+    setMessage('');
 
-    await api.post('/attendance', {
-      batch_id: selectedBatch,
-      date,
-      records: recordsList
-    });
+    try {
+      const recordsList = Object.entries(records)
+        .filter(([_, status]) => status !== '')
+        .map(([student_id, status]) => ({
+          student_id,
+          status
+        }));
 
-    await loadAttendance();
+      await api.post('/attendance', {
+        batch_id: selectedBatch,
+        date,
+        records: recordsList
+      });
+
+      setMessage('✅ Attendance saved');
+      await loadAttendance();
+
+    } catch {
+      setMessage('❌ Failed to save');
+    }
+
+    setLoading(false);
   };
 
-  // 👨‍🎓 STUDENT REQUEST
+  // 👨‍🎓 Student request
   const requestAttendance = async () => {
-    await api.post('/attendance/request', {
-      batch_id: selectedBatch,
-      date
-    });
+    setLoading(true);
 
-    await loadAttendance();
+    try {
+      await api.post('/attendance/request', {
+        batch_id: selectedBatch,
+        date
+      });
+
+      setMessage('✅ Request sent');
+      await loadAttendance();
+
+    } catch {
+      setMessage('❌ Failed');
+    }
+
+    setLoading(false);
   };
 
-  // ✅ APPROVE
+  // ✅ Approve
   const approve = async (id) => {
     await api.put(`/attendance/${id}/approve`);
     await loadAttendance();
-
-    setPendingRequests(prev => prev.filter(p => p.attendance_id !== id));
+    await loadPending();
   };
 
-  // ❌ REJECT
+  // ❌ Reject
   const reject = async (id) => {
     await api.put(`/attendance/${id}/reject`);
     await loadAttendance();
-
-    setPendingRequests(prev => prev.filter(p => p.attendance_id !== id));
+    await loadPending();
   };
 
   return (
@@ -129,9 +172,17 @@ export default function Attendance() {
         <input type="date" value={date} onChange={e => setDate(e.target.value)} />
       </div>
 
+      {/* MESSAGE */}
+      {message && (
+        <div className="mb-4 text-sm font-medium">
+          {message}
+        </div>
+      )}
+
       {/* 👨‍🎓 STUDENT VIEW */}
       {isStudent && selectedBatch && (
         <div>
+
           <button
             onClick={requestAttendance}
             className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -160,6 +211,7 @@ export default function Attendance() {
                 </div>
               ))}
           </div>
+
         </div>
       )}
 
@@ -167,7 +219,7 @@ export default function Attendance() {
       {isFacultyOrAdmin && selectedBatch && (
         <div>
 
-          {/* STUDENT LIST */}
+          {/* STUDENTS */}
           <div className="border">
             {students.map(s => (
               <div key={s.student_id} className="flex justify-between items-center p-2 border-b">
@@ -214,13 +266,18 @@ export default function Attendance() {
           {/* SAVE */}
           <button
             onClick={handleSave}
+            disabled={loading}
             className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
           >
-            Save Attendance
+            {loading ? 'Saving...' : 'Save Attendance'}
           </button>
 
-          {/* 🔥 PENDING REQUESTS */}
+          {/* 🔥 PENDING */}
           <h2 className="mt-6 font-semibold">Pending Requests</h2>
+
+          {pendingRequests.length === 0 && (
+            <p className="text-sm text-gray-500">No pending requests</p>
+          )}
 
           {pendingRequests.map(p => (
             <div key={p.attendance_id} className="flex justify-between border p-2 mt-2">
