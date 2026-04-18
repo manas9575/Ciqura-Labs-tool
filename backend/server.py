@@ -638,11 +638,21 @@ async def delete_enrollment(enrollment_id: str, request: Request):
 
 # ─── Attendance ───
 @api_router.post("/attendance/request")
-async def request_attendance(req: AttendanceCreate, request: Request):
+async def request_attendance(req: AttendanceRequest, request: Request):
     user = await get_current_user(request)
 
-    if "student" not in user.get("roles", []):
-        raise HTTPException(status_code=403, detail="Only students can submit")
+    if not user_has_role(user, "student"):
+        raise HTTPException(status_code=403, detail="Only students allowed")
+
+    # ❌ prevent duplicate
+    existing = await db.attendance.find_one({
+        "student_id": user["user_id"],
+        "batch_id": req.batch_id,
+        "date": req.date
+    })
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Already requested")
 
     attendance = {
         "attendance_id": f"att_{uuid.uuid4().hex[:12]}",
@@ -657,6 +667,7 @@ async def request_attendance(req: AttendanceCreate, request: Request):
     }
 
     await db.attendance.insert_one(attendance)
+
     return {"message": "Attendance request submitted"}
     
 @api_router.put("/attendance/{attendance_id}/approve")
