@@ -687,6 +687,15 @@ async def approve_attendance(attendance_id: str, request: Request):
             }
         }
     )
+    await db.notifications.insert_one({
+    "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+    "user_id": attendance["student_id"],
+    "title": "Attendance Approved",
+    "message": "Your attendance has been approved",
+    "read": False,
+    "created_at": datetime.now(timezone.utc).isoformat()
+         }
+     )
 
     return {"message": "Approved"}  
 
@@ -711,13 +720,16 @@ async def pending_attendance(request: Request):
     if not user_has_role(user, "admin", "faculty", "super_admin"):
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    data = await db.attendance.find(
-        {"status": "pending"},
-        {"_id": 0}
-    ).to_list(100)
+    data = await db.attendance.find({"status": "pending"}, {"_id": 0}).to_list(100)
+
+    for r in data:
+        student = await db.users.find_one(
+            {"user_id": r["student_id"]},
+            {"_id": 0, "name": 1}
+        )
+        r["student_name"] = student["name"] if student else "Unknown"
 
     return data
-
 @api_router.post("/attendance")
 async def mark_attendance(req: AttendanceCreate, request: Request):
     user = await get_current_user(request)
