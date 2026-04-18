@@ -983,7 +983,7 @@ c.drawCentredString(
 
 c.save()
 buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={
+return StreamingResponse(buffer, media_type="application/pdf", headers={
         "Content-Disposition": f"attachment; filename=receipt_{payment['receipt_number']}.pdf"
     })
 
