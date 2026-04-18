@@ -22,8 +22,8 @@ const navItems = {
     { to: '/holidays', icon: CalendarBlank, label: 'Holidays' },
     { to: '/analytics', icon: ChartBar, label: 'Analytics' },
     { to: '/settings', icon: Gear, label: 'Settings' },
-    { to: '/users', icon: Users, label: 'All Users' }
-    { to: '/admin/notifications', icon: Bell, label: 'Admin Notifications' }
+    { to: '/users', icon: Users, label: 'All Users' },
+    { to: '/admin/notifications', icon: Bell, label: 'Admin Notifications' },
   ],
   admin: [
     { to: '/dashboard', icon: House, label: 'Dashboard' },
@@ -38,7 +38,7 @@ const navItems = {
     { to: '/leaves', icon: Airplane, label: 'Leaves' },
     { to: '/holidays', icon: CalendarBlank, label: 'Holidays' },
     { to: '/analytics', icon: ChartBar, label: 'Analytics' },
-    { to: '/admin/notifications', icon: Bell, label: 'Admin Notifications' }
+    { to: '/admin/notifications', icon: Bell, label: 'Admin Notifications' },
   ],
   faculty: [
     { to: '/dashboard', icon: House, label: 'Dashboard' },
