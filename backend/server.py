@@ -873,111 +873,128 @@ async def list_payments(request: Request, student_id: Optional[str] = None):
 @api_router.get("/payments/{payment_id}/receipt")
 async def generate_receipt(payment_id: str, request: Request):
     user = await get_current_user(request)
+
     payment = await db.payments.find_one({"payment_id": payment_id}, {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
+
     if user_has_role(user, "student") and payment["student_id"] != user["user_id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
     student = await db.users.find_one({"user_id": payment["student_id"]}, {"_id": 0})
     fee = await db.fees.find_one({"fee_id": payment["fee_id"]}, {"_id": 0})
     course = await db.courses.find_one({"course_id": fee["course_id"]}, {"_id": 0})
-    settings = await db.institute_settings.find_one({}, {"_id": 0}) or {"institute_name": "Ciqura Labs"}
-    
+    settings = await db.institute_settings.find_one({}, {"_id": 0}) or {
+        "institute_name": "Ciqura Labs"
+    }
+
     from reportlab.lib import colors
+
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-# ===== HEADER =====
-   c.setFont("Helvetica-Bold", 20)
-   c.drawCentredString(width / 2, height - 1*inch, settings["institute_name"])
-   c.setFont("Helvetica", 12)
-   c.drawCentredString(width / 2, height - 1.3*inch, "FEE PAYMENT RECEIPT")
-   c.setStrokeColor(colors.grey)
-   c.line(1*inch, height - 1.4*inch, width - 1*inch, height - 1.4*inch)
-# ===== RECEIPT INFO =====
-   y = height - 1.8*inch
-   c.setFont("Helvetica", 10)
-   c.drawString(1*inch, y, f"Receipt #: {payment['receipt_number']}")
-   c.drawRightString(width - 1*inch, y, f"Date: {payment['payment_date'][:10]}")
-# ===== STUDENT DETAILS =====
-   y -= 0.5*inch
-   c.setFont("Helvetica-Bold", 12)
-   c.drawString(1*inch, y, "Student Details")
-   y -= 0.25*inch
-   c.setFont("Helvetica", 10)
-   c.drawString(1*inch, y, f"Name: {student['name']}")
-   y -= 0.2*inch
-   c.drawString(1*inch, y, f"Student ID: {student.get('display_id', '')}")
-   y -= 0.2*inch
-   c.drawString(1*inch, y, f"Email: {student['email']}")
+    # ===== HEADER =====
+    c.setFont("Helvetica-Bold", 20)
+    c.drawCentredString(width / 2, height - 1 * inch, settings["institute_name"])
 
-# ===== COURSE DETAILS =====
-   y -= 0.4*inch
-   c.setFont("Helvetica-Bold", 12)
-   c.drawString(1*inch, y, "Course Details")
-   y -= 0.25*inch
-   c.setFont("Helvetica", 10)
+    c.setFont("Helvetica", 12)
+    c.drawCentredString(width / 2, height - 1.3 * inch, "FEE PAYMENT RECEIPT")
 
-   c.drawString(1*inch, y, f"{course['name']} ({course.get('display_id', '')})")
-   c.drawRightString(width - 1*inch, y, f"Duration: {course['duration']}")
+    c.setStrokeColor(colors.grey)
+    c.line(1 * inch, height - 1.4 * inch, width - 1 * inch, height - 1.4 * inch)
 
-# ===== PAYMENT TABLE =====
-   y -= 0.5*inch
+    # ===== RECEIPT INFO =====
+    y = height - 1.8 * inch
+    c.setFont("Helvetica", 10)
 
-# Table header
-   c.setFillColor(colors.lightgrey)
-   c.rect(1*inch, y, width - 2*inch, 0.3*inch, fill=1)
+    c.drawString(1 * inch, y, f"Receipt #: {payment['receipt_number']}")
+    c.drawRightString(width - 1 * inch, y, f"Date: {payment['payment_date'][:10]}")
 
-   c.setFillColor(colors.black)
-   c.setFont("Helvetica-Bold", 10)
+    # ===== STUDENT DETAILS =====
+    y -= 0.5 * inch
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(1 * inch, y, "Student Details")
 
-   c.drawString(1.1*inch, y + 0.1*inch, "Description")
-   c.drawRightString(width - 1.1*inch, y + 0.1*inch, "Amount")
+    y -= 0.25 * inch
+    c.setFont("Helvetica", 10)
 
-# Table data 
-   y -= 0.35*inch
-   c.setFont("Helvetica", 10)
+    c.drawString(1 * inch, y, f"Name: {student['name']}")
+    y -= 0.2 * inch
+    c.drawString(1 * inch, y, f"Student ID: {student.get('display_id', '')}")
+    y -= 0.2 * inch
+    c.drawString(1 * inch, y, f"Email: {student['email']}")
 
-   c.drawString(1.1*inch, y, "Amount Paid")
-   c.drawRightString(width - 1.1*inch, y, f"Rs.{payment['amount']:.2f}")
+    # ===== COURSE DETAILS =====
+    y -= 0.4 * inch
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(1 * inch, y, "Course Details")
 
-   y -= 0.25*inch
-   c.drawString(1.1*inch, y, "Total Course Fee")
-   c.drawRightString(width - 1.1*inch, y, f"Rs.{fee['amount']:.2f}")
+    y -= 0.25 * inch
+    c.setFont("Helvetica", 10)
 
-# Calculations
-   all_pmts = await db.payments.find({"fee_id": fee["fee_id"]}).to_list(1000)
-   total_paid = sum(pm["amount"] for pm in all_pmts)
-   balance = fee["amount"] - total_paid
+    c.drawString(1 * inch, y, f"{course['name']} ({course.get('display_id', '')})")
+    c.drawRightString(width - 1 * inch, y, f"Duration: {course['duration']}")
 
-   y -= 0.25*inch
-   c.drawString(1.1*inch, y, "Total Paid")
-   c.drawRightString(width - 1.1*inch, y, f"Rs.{total_paid:.2f}")
+    # ===== PAYMENT TABLE =====
+    y -= 0.5 * inch
 
-   y -= 0.25*inch
-   c.setFont("Helvetica-Bold", 10)
-   c.drawString(1.1*inch, y, "Balance")
-   c.drawRightString(width - 1.1*inch, y, f"Rs.{balance:.2f}")
+    # Table header
+    c.setFillColor(colors.lightgrey)
+    c.rect(1 * inch, y, width - 2 * inch, 0.3 * inch, fill=1)
 
-# ===== FOOTER =====
-   y -= 0.5*inch
-   c.setFont("Helvetica", 8)
-   c.setFillColor(colors.grey)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 10)
 
-   c.drawCentredString(
-    width / 2,
-    y,
-    "This is a computer-generated receipt and does not require a signature."
-)
+    c.drawString(1.1 * inch, y + 0.1 * inch, "Description")
+    c.drawRightString(width - 1.1 * inch, y + 0.1 * inch, "Amount")
 
-  c.save()
-   buffer.seek(0)
-   return StreamingResponse(buffer, media_type="application/pdf", headers={
-        "Content-Disposition": f"attachment; filename=receipt_{payment['receipt_number']}.pdf"
-    })
+    # Table rows
+    y -= 0.35 * inch
+    c.setFont("Helvetica", 10)
 
+    c.drawString(1.1 * inch, y, "Amount Paid")
+    c.drawRightString(width - 1.1 * inch, y, f"Rs.{payment['amount']:.2f}")
+
+    y -= 0.25 * inch
+    c.drawString(1.1 * inch, y, "Total Course Fee")
+    c.drawRightString(width - 1.1 * inch, y, f"Rs.{fee['amount']:.2f}")
+
+    # ===== CALCULATIONS =====
+    all_pmts = await db.payments.find({"fee_id": fee["fee_id"]}).to_list(1000)
+    total_paid = sum(pm["amount"] for pm in all_pmts)
+    balance = fee["amount"] - total_paid
+
+    y -= 0.25 * inch
+    c.drawString(1.1 * inch, y, "Total Paid")
+    c.drawRightString(width - 1.1 * inch, y, f"Rs.{total_paid:.2f}")
+
+    y -= 0.25 * inch
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(1.1 * inch, y, "Balance")
+    c.drawRightString(width - 1.1 * inch, y, f"Rs.{balance:.2f}")
+
+    # ===== FOOTER =====
+    y -= 0.5 * inch
+    c.setFont("Helvetica", 8)
+    c.setFillColor(colors.grey)
+
+    c.drawCentredString(
+        width / 2,
+        y,
+        "This is a computer-generated receipt and does not require a signature."
+    )
+
+    c.save()
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=receipt_{payment['receipt_number']}.pdf"
+        }
+    )
 # ─── Files ───
 @api_router.post("/files/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), course_id: str = Query(None), batch_id: str = Query(None), file_type: str = Query("course_material")):
