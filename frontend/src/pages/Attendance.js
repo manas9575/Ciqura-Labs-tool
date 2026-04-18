@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
-import { Check, X, Clock } from '@phosphor-icons/react';
+import { Check, X } from '@phosphor-icons/react';
 
 export default function Attendance() {
   const { user } = useAuth();
@@ -15,9 +15,6 @@ export default function Attendance() {
   const [existingRecords, setExistingRecords] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
 
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-
   const isFacultyOrAdmin = ['faculty', 'admin', 'super_admin'].includes(user?.role);
   const isStudent = user?.role === 'student';
 
@@ -26,11 +23,11 @@ export default function Attendance() {
     api.get('/batches').then(r => setBatches(r.data)).catch(() => {});
   }, []);
 
-  // 🔹 Load students + attendance
+  // 🔹 Load data
   useEffect(() => {
     if (!selectedBatch) return;
 
-    // students
+    // Load students
     api.get(`/enrollments?batch_id=${selectedBatch}`).then(r => {
       setStudents(r.data);
 
@@ -39,95 +36,79 @@ export default function Attendance() {
       setRecords(initial);
     });
 
-    // existing attendance
-    api.get(`/attendance?batch_id=${selectedBatch}&date=${date}`).then(r => {
-      setExistingRecords(r.data);
+    loadAttendance();
 
-      const existing = {};
-      r.data.forEach(a => {
-        existing[a.student_id] = a.status;
-      });
-
-      setRecords(prev => ({
-        ...prev,
-        ...existing
-      }));
-    });
-
-    // pending requests (admin)
+    // Load pending requests
     if (isFacultyOrAdmin) {
       api.get('/attendance/pending').then(r => setPendingRequests(r.data));
     }
 
   }, [selectedBatch, date]);
 
-  // 💾 SAVE ATTENDANCE
-  const handleSave = async () => {
-    setLoading(true);
-    setMessage('');
-
+  // 🔥 CENTRALIZED LOAD FUNCTION (IMPORTANT)
+  const loadAttendance = async () => {
     try {
-      const recordsList = Object.entries(records).map(([student_id, status]) => ({
-        student_id,
-        status
-      }));
+      const res = await api.get(`/attendance?batch_id=${selectedBatch}&date=${date}`);
+      setExistingRecords(res.data);
 
-      await api.post('/attendance', {
-        batch_id: selectedBatch,
-        date,
-        records: recordsList
+      const mapped = {};
+
+      res.data.forEach(a => {
+        if (a.status === 'approved') {
+          mapped[a.student_id] = 'present';
+        } else if (a.status === 'rejected') {
+          mapped[a.student_id] = 'absent';
+        } else {
+          mapped[a.student_id] = 'pending';
+        }
       });
 
-      setMessage('✅ Attendance saved');
+      setRecords(prev => ({ ...prev, ...mapped }));
 
-    } catch {
-      setMessage('❌ Failed to save');
-    }
-
-    setLoading(false);
+    } catch {}
   };
 
-  // 👨‍🎓 REQUEST ATTENDANCE
+  // 💾 SAVE ATTENDANCE
+  const handleSave = async () => {
+    const recordsList = Object.entries(records).map(([student_id, status]) => ({
+      student_id,
+      status
+    }));
+
+    await api.post('/attendance', {
+      batch_id: selectedBatch,
+      date,
+      records: recordsList
+    });
+
+    await loadAttendance();
+  };
+
+  // 👨‍🎓 STUDENT REQUEST
   const requestAttendance = async () => {
-    setLoading(true);
-    setMessage('');
+    await api.post('/attendance/request', {
+      batch_id: selectedBatch,
+      date
+    });
 
-    try {
-      await api.post('/attendance/request', {
-        batch_id: selectedBatch,
-        date
-      });
-
-      setMessage('✅ Request submitted');
-
-    } catch (e) {
-      setMessage(e?.response?.data?.detail || '❌ Failed');
-    }
-
-    setLoading(false);
+    await loadAttendance();
   };
 
   // ✅ APPROVE
   const approve = async (id) => {
     await api.put(`/attendance/${id}/approve`);
+    await loadAttendance();
+
     setPendingRequests(prev => prev.filter(p => p.attendance_id !== id));
   };
 
   // ❌ REJECT
   const reject = async (id) => {
     await api.put(`/attendance/${id}/reject`);
+    await loadAttendance();
+
     setPendingRequests(prev => prev.filter(p => p.attendance_id !== id));
   };
-
-  // 🎯 SORT STUDENTS (present first)
-  const sortedStudents = [...students].sort((a, b) => {
-    const s1 = records[a.student_id];
-    const s2 = records[b.student_id];
-
-    if (s1 === 'present' && s2 !== 'present') return -1;
-    if (s1 !== 'present' && s2 === 'present') return 1;
-    return 0;
-  });
 
   return (
     <div className="p-4">
@@ -148,23 +129,14 @@ export default function Attendance() {
         <input type="date" value={date} onChange={e => setDate(e.target.value)} />
       </div>
 
-      {/* MESSAGE */}
-      {message && (
-        <div className="mb-4 text-sm font-medium">
-          {message}
-        </div>
-      )}
-
       {/* 👨‍🎓 STUDENT VIEW */}
       {isStudent && selectedBatch && (
         <div>
-
           <button
             onClick={requestAttendance}
-            disabled={loading}
             className="bg-blue-600 text-white px-4 py-2 rounded"
           >
-            {loading ? 'Submitting...' : 'Request Attendance'}
+            Request Attendance
           </button>
 
           <div className="mt-4">
@@ -172,6 +144,7 @@ export default function Attendance() {
               .filter(r => r.student_id === user.user_id)
               .map(r => (
                 <div key={r.attendance_id} className="border p-2 mb-2 flex justify-between">
+
                   <span>{r.date}</span>
 
                   <span className={`px-2 py-1 text-xs rounded ${
@@ -183,21 +156,20 @@ export default function Attendance() {
                   }`}>
                     {r.status}
                   </span>
+
                 </div>
               ))}
           </div>
-
         </div>
       )}
 
-      {/* 👨‍🏫 ADMIN / FACULTY VIEW */}
+      {/* 👨‍🏫 ADMIN / FACULTY */}
       {isFacultyOrAdmin && selectedBatch && (
         <div>
 
-          {/* TABLE */}
+          {/* STUDENT LIST */}
           <div className="border">
-
-            {sortedStudents.map(s => (
+            {students.map(s => (
               <div key={s.student_id} className="flex justify-between items-center p-2 border-b">
 
                 <span>{s.student_name}</span>
@@ -212,10 +184,14 @@ export default function Attendance() {
                       ? 'text-red-600 border-red-600'
                       : 'text-yellow-600 border-yellow-600'
                   }`}>
-                    {records[s.student_id]?.toUpperCase()}
+                    {records[s.student_id] === 'present'
+                      ? 'PRESENT'
+                      : records[s.student_id] === 'absent'
+                      ? 'ABSENT'
+                      : 'PENDING'}
                   </span>
 
-                  {/* ACTION */}
+                  {/* ACTIONS */}
                   <button
                     onClick={() => setRecords({ ...records, [s.student_id]: 'present' })}
                     className="text-green-600"
@@ -230,24 +206,17 @@ export default function Attendance() {
                     <X size={16} />
                   </button>
 
-                  {/* SAVED */}
-                  {existingRecords.find(e => e.student_id === s.student_id) && (
-                    <span className="text-xs text-green-500">✔</span>
-                  )}
-
                 </div>
               </div>
             ))}
-
           </div>
 
-          {/* SAVE BUTTON */}
+          {/* SAVE */}
           <button
             onClick={handleSave}
-            disabled={loading}
             className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
           >
-            {loading ? 'Saving...' : 'Save Attendance'}
+            Save Attendance
           </button>
 
           {/* 🔥 PENDING REQUESTS */}
