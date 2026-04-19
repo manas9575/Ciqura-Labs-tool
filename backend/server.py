@@ -474,10 +474,12 @@ async def admin_create_user(req: AdminCreateUser, request: Request):
     if existing:
         raise HTTPException(status_code=400, detail="User with this email already exists")
 
+    # Generate IDs
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     scount = await db.users.count_documents({"role": req.role}) + 1
     display_id = f"CL-{req.role[:3].upper()}-{scount:03d}"
 
+    # Including all required fields to satisfy MongoDB Schema Validation
     new_user = {
         "user_id": user_id,
         "display_id": display_id,
@@ -485,11 +487,24 @@ async def admin_create_user(req: AdminCreateUser, request: Request):
         "name": req.name,
         "password_hash": hash_password(req.password),
         "role": req.role,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        # Fields required by your database schema:
+        "picture": None,
+        "phone": "",
+        "address": "",
+        "dob": "",
+        "guardian_name": "",
+        "guardian_phone": "",
+        "blood_group": "",
+        "qualification": "",
+        "skills": [],
+        "interests": [],
+        "bio": ""
     }
+
     await db.users.insert_one(new_user)
     return {"message": "User created successfully", "user_id": user_id}
-
+    
 @api_router.put("/users/{user_id}/role")
 async def update_user_role(user_id: str, req: RoleUpdate, request: Request):
     user = await get_current_user(request)
