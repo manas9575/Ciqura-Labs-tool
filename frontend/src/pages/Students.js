@@ -81,28 +81,28 @@ export default function Students({ isFaculty = false }) {
         <div className="flex gap-2">
           {isAdmin && !isFaculty && (
             <button onClick={() => setEnrollOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600">
+              className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 rounded">
               <UserPlus size={16} /> Enroll Student
             </button>
           )}
 
           {isAdmin && (
             <button onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 text-sm border">
+              className="flex items-center gap-2 px-4 py-2 text-sm border rounded">
               <DownloadSimple size={16} /> Export CSV
             </button>
           )}
         </div>
       </div>
 
-      <div className="border">
+      <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
         <table className="w-full text-sm">
-          <thead>
+          <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
               {['Name', 'ID', 'Email', 'Role', 'Joined', isAdmin && 'Actions']
                 .filter(Boolean)
                 .map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs uppercase">
+                  <th key={h} className="text-left px-4 py-3 text-xs uppercase text-gray-500 dark:text-gray-400">
                     {h}
                   </th>
                 ))}
@@ -111,7 +111,7 @@ export default function Students({ isFaculty = false }) {
 
           <tbody>
             {users.map(u => (
-              <tr key={u.user_id} className="border-b hover:bg-gray-50">
+              <tr key={u.user_id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                 <td className="px-4 py-3">
                   <div
                     className="flex items-center gap-2 cursor-pointer"
@@ -136,7 +136,7 @@ export default function Students({ isFaculty = false }) {
                     <select
                       value={u.role}
                       onChange={e => handleRoleChange(u.user_id, e.target.value)}
-                      className="px-2 py-1 border text-xs"
+                      className="px-2 py-1 border border-gray-300 dark:border-gray-700 bg-transparent dark:bg-[#1a1a1a] text-gray-900 dark:text-white text-xs rounded dark:[color-scheme:dark]"
                     >
                       <option value="student">Student</option>
                       <option value="faculty">Faculty</option>
@@ -158,7 +158,7 @@ export default function Students({ isFaculty = false }) {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => handleDelete(u.user_id)}
-                      className="text-red-500"
+                      className="text-red-500 hover:text-red-600"
                     >
                       <Trash size={16} />
                     </button>
@@ -170,14 +170,14 @@ export default function Students({ isFaculty = false }) {
         </table>
 
         {users.length === 0 && (
-          <div className="text-center py-12 text-sm">
+          <div className="text-center py-12 text-sm text-gray-500 dark:text-gray-400">
             No {isFaculty ? 'faculty' : 'students'} found.
           </div>
         )}
       </div>
 
       <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
-        <DialogContent>
+        <DialogContent className="dark:bg-[#1a1a1a] dark:text-white border dark:border-gray-800">
           <DialogHeader>
             <DialogTitle>Enroll Student</DialogTitle>
           </DialogHeader>
@@ -186,6 +186,7 @@ export default function Students({ isFaculty = false }) {
             <select
               value={enrollForm.student_id}
               onChange={e => setEnrollForm({ ...enrollForm, student_id: e.target.value })}
+              className="w-full px-3 py-2 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600 dark:[color-scheme:dark]"
             >
               <option value="">Select student</option>
               {users.map(s => (
@@ -198,6 +199,7 @@ export default function Students({ isFaculty = false }) {
             <select
               value={enrollForm.course_id}
               onChange={e => setEnrollForm({ ...enrollForm, course_id: e.target.value })}
+              className="w-full px-3 py-2 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600 dark:[color-scheme:dark]"
             >
               <option value="">Select course</option>
               {courses.map(c => (
@@ -210,6 +212,7 @@ export default function Students({ isFaculty = false }) {
             <select
               value={enrollForm.batch_id}
               onChange={e => setEnrollForm({ ...enrollForm, batch_id: e.target.value })}
+              className="w-full px-3 py-2 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600 dark:[color-scheme:dark]"
             >
               <option value="">Select batch</option>
               {filteredBatches.map(b => (
@@ -221,7 +224,7 @@ export default function Students({ isFaculty = false }) {
 
             <button
               onClick={handleEnroll}
-              className="w-full py-2 text-white bg-blue-600"
+              className="w-full py-2 text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
             >
               Enroll Student
             </button>
