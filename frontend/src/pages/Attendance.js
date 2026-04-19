@@ -376,6 +376,9 @@ export default function Attendance() {
   }, [selectedBatch]);
 
   /* ── Bootstrap on batch/date change ── */
+  // ✅ FIX: Fetch enrollments + attendance together in one Promise.all,
+  // then merge into a single setRecords call to avoid race conditions
+  // where setRecords(init) could overwrite the loaded attendance data.
   useEffect(() => {
     if (!selectedBatch) return;
     setLoadingMain(true);
@@ -385,27 +388,26 @@ export default function Attendance() {
     setSelectedStudent(null);
 
     Promise.all([
-      api.get(`/enrollments?batch_id=${selectedBatch}`).then(r => {
-        setStudents(r.data);
-        const init = {};
-        r.data.forEach(e => { init[e.student_id] = 'pending'; });
-        setRecords(init);
-      }),
-      loadDailyAttendance(),
-      loadAllAttendance(),
-      isFacultyOrAdmin
-        ? api.get('/attendance/pending').then(r => setPendingRequests(r.data))
-        : Promise.resolve()
-    ]).catch(() => {}).finally(() => setLoadingMain(false));
+      api.get(`/enrollments?batch_id=${selectedBatch}`),
+      api.get(`/attendance?batch_id=${selectedBatch}&date=${date}`),
+      api.get(`/attendance?batch_id=${selectedBatch}`),
+      isFacultyOrAdmin ? api.get('/attendance/pending') : Promise.resolve({ data: [] })
+    ])
+      .then(([enrollRes, dailyRes, allRes, pendingRes]) => {
+        setStudents(enrollRes.data);
+        setAllRecords(allRes.data);
+        if (isFacultyOrAdmin) setPendingRequests(pendingRes.data);
+
+        // Start all students as pending, then overlay saved attendance
+        const merged = {};
+        enrollRes.data.forEach(e => { merged[e.student_id] = 'pending'; });
+        dailyRes.data.forEach(a => { merged[a.student_id] = displayStatus(a.status); });
+        setRecords(merged);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMain(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBatch, date]);
-
-  /* ── Re-fetch daily when date changes ── */
-  useEffect(() => {
-    if (!selectedBatch) return;
-    loadDailyAttendance();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
 
   /* ─────────────── ACTIONS ─────────────── */
 
