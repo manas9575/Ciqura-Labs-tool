@@ -177,6 +177,12 @@ class SettingsUpdate(BaseModel):
 class RoleUpdate(BaseModel):
     role: str  # Can be comma-separated for dual roles e.g. "admin,faculty"
 
+class AdminCreateUser(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str
+
 class EmailSend(BaseModel):
     to: str
     subject: str
